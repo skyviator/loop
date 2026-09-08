@@ -841,6 +841,7 @@ export type Database = {
           plan_id: string
           slug: string
           status: Database["public"]["Enums"]["record_status"]
+          teachers_can_manage_timetable: boolean
           timezone: string
           updated_at: string
         }
@@ -851,6 +852,7 @@ export type Database = {
           plan_id: string
           slug: string
           status?: Database["public"]["Enums"]["record_status"]
+          teachers_can_manage_timetable?: boolean
           timezone?: string
           updated_at?: string
         }
@@ -861,6 +863,7 @@ export type Database = {
           plan_id?: string
           slug?: string
           status?: Database["public"]["Enums"]["record_status"]
+          teachers_can_manage_timetable?: boolean
           timezone?: string
           updated_at?: string
         }
@@ -1046,7 +1049,30 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      end_sleep_batch: {
+        Args: { sleep_event_ids: string[]; target_classroom_id: string }
+        Returns: number
+      }
+      move_child_enrollment: {
+        Args: {
+          move_date: string
+          target_child_id: string
+          target_classroom_id: string
+        }
+        Returns: string
+      }
+      record_care_batch: {
+        Args: {
+          event_category: Database["public"]["Enums"]["care_category"]
+          event_items: Json
+          event_note?: string
+          linked_timetable_slot_id?: string
+          target_classroom_id: string
+          target_service_date: string
+        }
+        Returns: number
+      }
+      redeem_invitation: { Args: { invitation_token: string }; Returns: string }
     }
     Enums: {
       attendance_status: "expected" | "present" | "absent" | "excused"

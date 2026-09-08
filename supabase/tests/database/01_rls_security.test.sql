@@ -10,6 +10,31 @@ as $$
   select extensions.throws_ok(command, null::text, description);
 $$;
 
+-- Keep the security suite deterministic even when the optional local demo seed
+-- has been loaded. The surrounding transaction restores that seed afterward.
+truncate table
+  public.audit_log,
+  public.invitations,
+  public.attendance_records,
+  public.care_events,
+  public.timetable_exceptions,
+  public.timetable_slots,
+  public.school_feature_settings,
+  public.child_guardians,
+  public.child_enrollments,
+  public.children,
+  public.classroom_staff_assignments,
+  public.classrooms,
+  public.branches,
+  public.school_memberships,
+  public.schools,
+  public.plan_features,
+  public.plans,
+  public.platform_administrators,
+  public.user_profiles
+restart identity cascade;
+delete from auth.users;
+
 -- Fixed identities make failures readable. They are transaction-scoped and rolled back.
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -242,6 +267,197 @@ set local role authenticated;
 select extensions.ok((select count(*) from public.audit_log where school_id = 'a0000000-0000-0000-0000-000000000001') > 0, 'admin A can read School A audit history');
 select pg_temp.throws_any($$update public.audit_log set action = 'tampered' where school_id = 'a0000000-0000-0000-0000-000000000001'$$, 'application users cannot update audit history');
 select pg_temp.throws_any($$delete from public.audit_log where school_id = 'a0000000-0000-0000-0000-000000000001'$$, 'application users cannot delete audit history');
+reset role;
+
+-- Step 3: school-configured teacher timetable management remains assignment scoped.
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select pg_temp.throws_any($$insert into public.timetable_slots (id, school_id, classroom_id, day_of_week, start_time, end_time, title, created_by_user_id) values ('a0000000-0000-0000-0000-000000000072', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 2, '09:00', '09:30', 'Teacher slot', '10000000-0000-0000-0000-000000000002')$$, 'teacher cannot manage timetable while school permission is disabled');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok($$update public.schools set teachers_can_manage_timetable = true where id = 'a0000000-0000-0000-0000-000000000001'$$, 'school admin can enable teacher timetable management');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select extensions.lives_ok($$insert into public.timetable_slots (id, school_id, classroom_id, day_of_week, start_time, end_time, title, created_by_user_id) values ('a0000000-0000-0000-0000-000000000072', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 2, '09:00', '09:30', 'Teacher slot', '10000000-0000-0000-0000-000000000002')$$, 'assigned teacher can create a timetable slot after permission is enabled');
+select pg_temp.throws_any($$insert into public.timetable_slots (school_id, classroom_id, day_of_week, start_time, end_time, title, created_by_user_id) values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000021', 2, '09:00', '09:30', 'Unassigned slot', '10000000-0000-0000-0000-000000000002')$$, 'teacher cannot manage an unassigned classroom timetable');
+select extensions.lives_ok($$delete from public.timetable_slots where id = 'a0000000-0000-0000-0000-000000000072'$$, 'assigned teacher can remove a permitted timetable slot');
+reset role;
+
+-- Step 3: platform structure setup does not expand child-data access.
+select set_config('request.jwt.claim.sub', '90000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok($$insert into public.branches (id, school_id, name) values ('a0000000-0000-0000-0000-000000000012', 'a0000000-0000-0000-0000-000000000001', 'Platform starter branch')$$, 'platform admin can create starter branch structure');
+select extensions.lives_ok($$insert into public.classrooms (school_id, branch_id, name) values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000012', 'Platform starter classroom')$$, 'platform admin can create starter classroom structure');
+select extensions.lives_ok($$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id) values ('b0000000-0000-0000-0000-000000000001', 'first-admin@loop.test', 'school_admin', extensions.digest('platform-admin-invite-token', 'sha256'), now() + interval '1 day', '90000000-0000-0000-0000-000000000001')$$, 'platform admin can create a first school-admin invitation');
+select extensions.is((select count(*)::integer from public.children), 0, 'platform starter structure policy still exposes no children');
+reset role;
+
+-- Step 3: plan limits are database-enforced, not merely advisory UI checks.
+update public.plans set max_active_children = 1, max_staff = 3 where id = '30000000-0000-0000-0000-000000000001';
+insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values ('00000000-0000-0000-0000-000000000000', '10000000-0000-0000-0000-000000000005', 'authenticated', 'authenticated', 'limit-teacher@loop.test', crypt(gen_random_uuid()::text, gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Limit Teacher"}', now(), now());
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select pg_temp.throws_any($$insert into public.children (school_id, preferred_name) values ('a0000000-0000-0000-0000-000000000001', 'Over plan child')$$, 'active child limit is enforced by the database');
+select pg_temp.throws_any($$insert into public.school_memberships (school_id, user_id, role) values ('a0000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000005', 'teacher')$$, 'active staff limit is enforced by the database');
+reset role;
+
+-- Step 3: redemption needs both the one-time token and matching Auth email.
+insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values ('00000000-0000-0000-0000-000000000000', '10000000-0000-0000-0000-000000000006', 'authenticated', 'authenticated', 'new-teacher@loop.test', crypt(gen_random_uuid()::text, gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Invited Teacher"}', now(), now());
+update public.plans set max_staff = 4 where id = '30000000-0000-0000-0000-000000000001';
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select pg_temp.throws_any($$select public.redeem_invitation('one-time-secret-never-stored')$$, 'a valid token cannot be redeemed by a different authenticated email');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000006', true);
+set local role authenticated;
+select extensions.lives_ok($$select public.redeem_invitation('one-time-secret-never-stored')$$, 'matching authenticated email can redeem the pending invitation');
+select extensions.is((select role::text from public.school_memberships where user_id = '10000000-0000-0000-0000-000000000006'), 'teacher', 'redemption creates only the invited role');
+select pg_temp.throws_any($$select public.redeem_invitation('one-time-secret-never-stored')$$, 'an accepted invitation cannot be replayed');
+reset role;
+
+-- Step 3B: a whole-class care save is one atomic database operation. A single
+-- absent child rejects the complete batch; valid present children share one batch id.
+update public.plans
+set max_active_children = 100, max_staff = 30
+where id = '30000000-0000-0000-0000-000000000001';
+insert into public.children (id, school_id, preferred_name)
+values ('a0000000-0000-0000-0000-000000000031', 'a0000000-0000-0000-0000-000000000001', 'Child A Two');
+insert into public.child_enrollments (id, school_id, child_id, classroom_id, starts_on, status)
+values ('a0000000-0000-0000-0000-000000000051', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000031', 'a0000000-0000-0000-0000-000000000020', current_date - 1, 'active');
+insert into public.attendance_records (
+  id, school_id, child_id, classroom_id, enrollment_id, service_date, status,
+  recorded_by_membership_id, recorded_by_user_id
+)
+values (
+  'a0000000-0000-0000-0000-000000000081', 'a0000000-0000-0000-0000-000000000001',
+  'a0000000-0000-0000-0000-000000000031', 'a0000000-0000-0000-0000-000000000020',
+  'a0000000-0000-0000-0000-000000000051', current_date, 'absent',
+  'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002'
+);
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.record_care_batch(
+    'a0000000-0000-0000-0000-000000000020', current_date, 'meal',
+    '[{"child_id":"a0000000-0000-0000-0000-000000000030","meal_outcome":"ate_little"},{"child_id":"a0000000-0000-0000-0000-000000000031","meal_outcome":"ate_little"}]'::jsonb
+  )$$,
+  'one absent child rejects the complete care batch'
+);
+reset role;
+select extensions.is(
+  (select count(*)::integer from public.care_events where meal_outcome = 'ate_little'),
+  0,
+  'a rejected care batch leaves no partial rows'
+);
+
+update public.attendance_records
+set status = 'present', checked_in_at = now()
+where id = 'a0000000-0000-0000-0000-000000000081';
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select extensions.is(
+  public.record_care_batch(
+    'a0000000-0000-0000-0000-000000000020', current_date, 'meal',
+    '[{"child_id":"a0000000-0000-0000-0000-000000000030","meal_outcome":"ate_little"},{"child_id":"a0000000-0000-0000-0000-000000000031","meal_outcome":"ate_little"}]'::jsonb
+  ),
+  2,
+  'assigned teacher saves two present-child care records in one call'
+);
+reset role;
+select extensions.is(
+  (select count(distinct bulk_batch_id)::integer from public.care_events where meal_outcome = 'ate_little'),
+  1,
+  'one whole-class care action shares one batch id'
+);
+
+-- Module entitlements and classroom assignment are enforced inside the RPC.
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.record_care_batch('a0000000-0000-0000-0000-000000000020', current_date, 'water', '[{"child_id":"a0000000-0000-0000-0000-000000000030","outcome_code":"some"}]'::jsonb)$$,
+  'a disabled care module cannot be written'
+);
+select pg_temp.throws_any(
+  $$select public.record_care_batch('b0000000-0000-0000-0000-000000000020', current_date, 'meal', '[{"child_id":"b0000000-0000-0000-0000-000000000030","meal_outcome":"ate_all"}]'::jsonb)$$,
+  'teacher A cannot call the batch RPC for School B'
+);
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000004', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.record_care_batch('a0000000-0000-0000-0000-000000000020', current_date, 'meal', '[{"child_id":"a0000000-0000-0000-0000-000000000030","meal_outcome":"ate_all"}]'::jsonb)$$,
+  'unassigned teacher cannot call the batch RPC'
+);
+reset role;
+
+-- Sleep has an explicit start/end lifecycle and only one active row per child.
+insert into public.school_feature_settings (school_id, feature_key, is_enabled, configured_by_user_id)
+values ('a0000000-0000-0000-0000-000000000001', 'sleep', true, '10000000-0000-0000-0000-000000000001');
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select extensions.is(
+  public.record_care_batch(
+    'a0000000-0000-0000-0000-000000000020', current_date, 'sleep',
+    '[{"child_id":"a0000000-0000-0000-0000-000000000030","outcome_code":"started"}]'::jsonb
+  ),
+  1,
+  'assigned teacher starts sleep for a present child'
+);
+select pg_temp.throws_any(
+  $$select public.record_care_batch('a0000000-0000-0000-0000-000000000020', current_date, 'sleep', '[{"child_id":"a0000000-0000-0000-0000-000000000030","outcome_code":"started"}]'::jsonb)$$,
+  'a child cannot have two active sleep records'
+);
+select extensions.is(
+  public.end_sleep_batch(
+    'a0000000-0000-0000-0000-000000000020',
+    array[(select id from public.care_events where child_id = 'a0000000-0000-0000-0000-000000000030' and category = 'sleep' and ended_at is null)]
+  ),
+  1,
+  'assigned teacher ends an active sleep'
+);
+reset role;
+select extensions.ok(
+  (select ended_at >= started_at from public.care_events where child_id = 'a0000000-0000-0000-0000-000000000030' and category = 'sleep'),
+  'ended sleep keeps a valid non-negative duration'
+);
+
+-- School administrators may move enrollment history atomically, but cannot
+-- edit platform-owned plan/status fields. Platform administrators can edit limits.
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok(
+  $$select public.move_child_enrollment('a0000000-0000-0000-0000-000000000031', 'a0000000-0000-0000-0000-000000000021', current_date)$$,
+  'school admin can move a child to another classroom in the same school'
+);
+select pg_temp.throws_any(
+  $$select public.move_child_enrollment('b0000000-0000-0000-0000-000000000030', 'b0000000-0000-0000-0000-000000000020', current_date)$$,
+  'school admin cannot move a child in another school'
+);
+select pg_temp.throws_any(
+  $$update public.schools set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000001'$$,
+  'school admin cannot change a platform-owned school status'
+);
+reset role;
+select extensions.is(
+  (select count(*)::integer from public.child_enrollments where child_id = 'a0000000-0000-0000-0000-000000000031' and status = 'active' and classroom_id = 'a0000000-0000-0000-0000-000000000021'),
+  1,
+  'child move leaves exactly one active enrollment in the destination classroom'
+);
+select set_config('request.jwt.claim.sub', '90000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok(
+  $$update public.plans set max_active_children = 101 where id = '30000000-0000-0000-0000-000000000001'$$,
+  'platform admin can edit plan limits'
+);
+select extensions.lives_ok(
+  $$update public.schools set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000001'$$,
+  'platform admin can change a school status'
+);
 reset role;
 
 select * from extensions.finish();

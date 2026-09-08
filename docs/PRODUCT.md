@@ -10,16 +10,18 @@ Loop.lk is a privacy-sensitive, multi-tenant nursery/preschool parent communicat
 - Teacher workflows should require few taps and favor bulk actions, smart defaults, and editing only the exceptions.
 - Product language should be direct childcare language, not generic SaaS language.
 - The visual and interaction design should feel calm, premium, friendly, trustworthy, and deliberately human-made.
-- Default/system emojis are prohibited. A consistent first-party Loop SVG icon set will be designed in a later step.
+- Default/system emojis are prohibited. Step 3 introduces the consistent rounded-stroke, `currentColor` first-party Loop SVG icon set.
 
 ## Experience direction
 
 The future parent home is timeline-first, not a dashboard. The future teacher experience may be denser, but it must preserve readable type and 48px touch targets. These are product directions, not implemented features or API commitments.
 
-## Current Step 2 scope
+## Current Step 3 scope
 
-The Step 1 workspace, brand foundation, PWA metadata, and non-authenticated welcome screen remain unchanged. Step 2 adds a local-only backend foundation for schools, branches, classrooms, memberships, children, guardians, recurring timetables, attendance, and care events.
+Step 3 connects the local backend to production-oriented role experiences: secure sign-in/recovery and one-time invitations, role routing, editable platform school/plan setup, editable school administration, mobile Classroom Today for teachers, and Child -> Today for guardians.
 
-The built-in feature catalogue and plan/school settings describe future product availability. Availability requires a supported active feature, an active plan entitlement, the school setting, and the caller's action permission. This is not billing and does not imply that every catalogued feature has been implemented.
+The teacher care workflow covers meal, bottle, water, sleep, toilet, nappy, mood, activity, and note. Each module follows the same few-tap pattern: choose the module, accept the class default, keep present children selected, change only exceptions, and save once. Sleep is deliberately a two-action lifecycle (start, then end); the parent timeline presents both moments and the duration. The fictional QA roster contains 15 children so the operational density is exercised rather than inferred from a tiny fixture.
 
-Authentication screens, account activation, Teacher/Parent product UI, photos, short video, storage, messaging, announcements delivery, calendar UI, incidents workflow, notifications, billing, and deployment remain deferred.
+The built-in feature catalogue and plan/school settings describe product availability. Availability requires a supported active feature, an active plan entitlement, the school setting, and the caller's action permission. This is not billing and does not imply that every catalogued feature has been implemented.
+
+Photos, short video, storage, messaging, announcements delivery, incidents workflow, notifications, billing, payments, production email delivery, cloud credentials, and deployment remain deferred.

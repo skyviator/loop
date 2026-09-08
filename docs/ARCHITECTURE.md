@@ -7,9 +7,9 @@ apps/
   web/              Next.js App Router PWA
 packages/
   brand/            design values, CSS tokens, local fonts, approved artwork
-  domain/           platform-neutral domain logic (empty foundation)
+  domain/           platform-neutral schedule, timeline, role, feature, and bulk-care logic
   types/            shared contracts and generated local database types
-  validation/       platform-neutral validation (empty foundation)
+  validation/       platform-neutral form/input validation
 supabase/
   config.toml       local Supabase configuration
   migrations/       ordered, version-controlled database changes
@@ -29,7 +29,7 @@ The pnpm workspace is deliberately small. The current web app is the only runnab
 
 ## Web foundation
 
-The web app uses stable Next.js with the App Router, React, strict TypeScript, Tailwind CSS, ESLint, and local Manrope via `next/font/local`. The manifest provides a standalone PWA identity and proportional derivatives of the approved master artwork. A service worker, offline/update lifecycle, Web Push, and caching strategy are explicitly deferred.
+The web app uses Next.js App Router, React Server Components, server actions, strict TypeScript, Tailwind CSS, ESLint, and local Manrope via `next/font/local`. Authenticated pages fetch independent RLS-scoped data in parallel on the server and send only rendered role data to small client boundaries. The teacher care panel is the only stateful Step 3B workflow boundary; one server action sends its whole validated class batch to one database RPC. The manifest provides a standalone PWA identity and proportional derivatives of the approved master artwork. A service worker, offline/update lifecycle, Web Push, and caching strategy are explicitly deferred.
 
 `apps/web/lib/supabase` contains typed browser and server client factories using `@supabase/ssr`. Next.js `proxy.ts` performs Auth claim validation/session cookie refresh when local public environment variables exist; it does not authorize database rows or redirect the Step 1 welcome page. RLS remains the data boundary. Browser code uses only the publishable key.
 
@@ -37,7 +37,7 @@ The web app uses stable Next.js with the App Router, React, strict TypeScript, T
 
 Supabase CLI and JavaScript packages are project-scoped and pinned. The local stack uses PostgreSQL 17 plus Auth, Data API, Studio, and the default local supporting services. The observed full stack fit the approximately 8 GB Docker allocation, so no services are excluded.
 
-On the current Windows/Docker Desktop host, the CLI publishes ports 54321-54327 on all host interfaces and Windows Firewall is disabled. The stack was therefore stopped after verification. Before starting it again, enable a host firewall that blocks inbound access to those ports (especially on the Public profile), and never add router forwarding or a public tunnel. The current CLI has no supported project configuration for changing its Docker host bind address to loopback only.
+On the current Windows/Docker Desktop host, Docker still reports published ports without a localhost-only `HostIp`, despite the custom bridge option. Microsoft Defender Firewall is enabled, and manual same-Wi-Fi testing from another device could not reach Studio through the PC LAN address. Keep the firewall enabled whenever the local stack runs; never add router forwarding or a public tunnel. This is a local-development caveat, not the production network architecture.
 
 From the repository root:
 
@@ -49,7 +49,7 @@ pnpm supabase:test
 pnpm supabase:types
 ```
 
-Copy `apps/web/.env.example` to an ignored `.env.local`, then obtain the local publishable key with `pnpm exec supabase status --output env`. Never put `SECRET_KEY`, `SERVICE_ROLE_KEY`, or the database password in a `NEXT_PUBLIC_` variable.
+Copy `apps/web/.env.example` to an ignored `.env.local`, then obtain the local publishable key with `pnpm exec supabase status --output env`. The local seed/invitation activator also needs the local service-role key in the server-only variable documented by the example. Never put `SECRET_KEY`, `SERVICE_ROLE_KEY`, or the database password in a `NEXT_PUBLIC_` variable.
 
 Create each database change with `pnpm exec supabase migration new <name>`. Edit that new migration, run `pnpm supabase:reset`, run `pnpm supabase:test`, then regenerate `packages/types/src/database.generated.ts` with `pnpm supabase:types`.
 

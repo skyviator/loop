@@ -20,19 +20,29 @@ An enabled action requires: active built-in feature + active plan and entitlemen
 
 ## Care and attendance
 
-`care_events` supports meal, bottle, water, sleep, toilet, nappy, mood, activity, and note categories, with timestamps, status/outcome, quantity/unit, short note, recorder, optional timetable association, and a shared bulk batch ID. Meal outcomes are constrained to all/most/some/little/none-refused. Context triggers verify that child, enrollment, classroom, school, and recorder match.
+`care_events` supports meal, bottle, water, sleep, toilet, nappy, mood, activity, and note categories, with timestamps, status/outcome, quantity/unit, short note, recorder, optional timetable association, and a shared bulk batch ID. Meal outcomes are constrained to all/most/some/little/none-refused. Context triggers verify that child, enrollment, classroom, school, and recorder match. `record_care_batch` additionally checks the effective feature, classroom assignment, active enrollment, and present/not-checked-out attendance for every selected child, then inserts the whole batch atomically. One invalid child rejects every row.
+
+Sleep start is a care batch with `started_at`; a partial unique index prevents a second active sleep for the child. `end_sleep_batch` stamps `ended_at` for the selected active rows in one operation. Parent presentation derives start, end, and duration from these timestamps.
 
 `attendance_records` has one row per child/service date, enrollment and classroom context, expected/present/absent/excused state, check-in/out timestamps, recorder, and constraints against checkout-before-checkin or absent-with-checkin states.
 
 ## Invitations and audit
 
-`invitations` supports guardian, teacher, and school-admin invitations. It stores a unique token hash, never a reusable plaintext secret, plus expiry/revocation/acceptance state. Actual token generation, delivery, and atomic redemption are deferred.
+`invitations` supports guardian, teacher, and school-admin invitations. Tokens are generated with cryptographic randomness and only their SHA-256 hashes are stored. Redemption is atomic in the database and requires both a pending unexpired token and a matching authenticated Auth email. Local-only activation creates the Auth identity through a server-only privileged client; production email delivery remains deferred.
 
 `audit_log` is append-oriented. Triggers record allow-listed administrative state for memberships, classroom assignments, school feature settings, timetable changes, invitations, platform assignments, and school plan/status changes. Application roles cannot mutate audit rows.
 
+## Step 3 enforcement and local data
+
+`schools.teachers_can_manage_timetable` is the explicit school-level permission for assigned teachers. RLS combines it with membership, classroom assignment, and the timetable feature. Database triggers serialize active-child and active-staff counts and reject writes beyond the school plan, so plan limits do not depend on UI checks. `move_child_enrollment` locks and completes the prior active enrollment before inserting the destination enrollment; school plan/status edits are independently trigger-protected as platform-owned fields.
+
+`pnpm seed:local` loads two fictional schools plus platform, school-admin, teacher, and guardian accounts; classroom structure; a 15-child operational QA roster; timetable; attendance; and care examples. It writes newly generated test passwords and one local invite URL only to `supabase/.temp/test-credentials.json`, which is ignored by Git. Run the seed only against the guarded localhost stack after `pnpm supabase:reset`.
+
+Timetable display state is derived from an injected clock, the school IANA timezone, attendance, exceptions, and explicit care confirmation. Time passing produces `ended_unconfirmed`, never `confirmed`; absence produces `absent`, never completion.
+
 ## Deferred
 
-No persistent demo tenant is seeded. No cloud project, billing, storage/media, messaging, push, full authentication flow, invitation email/redemption, or Teacher/Parent feature UI is included in Step 2.
+No cloud project, billing, storage/media, messaging, push, production email delivery, or deployment is included in Step 3.
 
 ## Local Docker network
 

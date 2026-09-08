@@ -5,7 +5,8 @@
     "jsx": "react-jsx",
     "lib": ["dom", "dom.iterable", "esnext"],
     "plugins": [{ "name": "next" }],
-    "types": ["node"]
+    "types": ["node"],
+    "paths": { "@/*": ["./*"] }
   },
   "include": [
     "next-env.d.ts",
@@ -16,4 +17,3 @@
   ],
   "exclude": ["node_modules"]
 }
-

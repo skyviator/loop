@@ -4,8 +4,8 @@ Loop is a privacy-sensitive, multi-tenant nursery/preschool parent communication
 
 ## Current boundary
 
-- Step 2 adds a local-only Supabase/Postgres/Auth foundation, versioned migrations, RLS, pgTAP tests, generated database types, and typed SSR client utilities. It does not add sign-in UI or production accounts.
-- Do not link or deploy a Supabase project, create cloud credentials, add storage/media, messaging, push, billing, or build later product UI without an explicit later step.
+- Step 3 adds the local core application experience: cookie-based sign-in/recovery, role routing, editable platform and school setup, teacher Classroom Today, guardian Child -> Today, recurring timetables/exceptions, attendance, atomic bulk care for all nine core care modules, sleep start/end, a 15-child fictional local seed, and database-enforced plan limits.
+- Do not link or deploy a Supabase project, create cloud credentials, or add storage/media, messaging, push, billing, payments, or production email delivery without an explicit later step.
 - Use pnpm from the repository root. App checks are `pnpm lint`, `pnpm typecheck`, `pnpm build`; local database commands are `pnpm supabase:start`, `pnpm supabase:stop`, `pnpm supabase:reset`, `pnpm supabase:test`, and `pnpm supabase:types`.
 - Create schema changes with a new migration. Never hand-edit generated database types; regenerate them from the local database after a successful reset.
 
@@ -15,7 +15,7 @@ Loop is a privacy-sensitive, multi-tenant nursery/preschool parent communication
 - Teacher workflows use few taps, bulk actions, smart defaults, and exception editing.
 - Parent experience centers on Child -> Today.
 - No ERP-style feature bloat.
-- No default/system emojis anywhere. A consistent custom Loop SVG icon set will come later.
+- No default/system emojis anywhere. Extend the first-party rounded-stroke `LoopIcon` set consistently when a new icon is justified.
 - The product must feel calm, premium, friendly, trustworthy, and human-designed, never generic or AI-generated.
 
 ## Design rules

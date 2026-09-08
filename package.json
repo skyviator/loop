@@ -11,6 +11,9 @@
     "build": "pnpm --filter @loop/web build",
     "lint": "pnpm --filter @loop/web lint",
     "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "test:e2e": "playwright test",
+    "seed:local": "pnpm --filter @loop/web seed:local",
     "supabase:start": "supabase start --network-id loop-local-network",
     "supabase:stop": "supabase stop --network-id loop-local-network",
     "supabase:reset": "supabase db reset --local --network-id loop-local-network",
@@ -18,6 +21,7 @@
     "supabase:types": "supabase gen types typescript --local --schema public --network-id loop-local-network > packages/types/src/database.generated.ts"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "26.4.1",
     "@types/react": "19.2.18",
@@ -26,6 +30,7 @@
     "eslint-config-next": "16.3.4",
     "supabase": "2.117.0",
     "tailwindcss": "4.3.3",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
   }
 }
