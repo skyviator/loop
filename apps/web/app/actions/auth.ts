@@ -39,15 +39,24 @@ export async function signOutAction() {
 export async function forgotPasswordAction(formData: FormData) {
   try {
     const email = emailAddress(formData.get("email"));
+    const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    if (!configuredSiteUrl) throw new Error("Site URL is not configured.");
+    const siteUrl = new URL(configuredSiteUrl);
+    if (process.env.NODE_ENV !== "development" && siteUrl.protocol !== "https:") {
+      throw new Error("Site URL is not configured securely.");
+    }
     const supabase = await createClient();
     await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000"}/auth/callback?next=/reset-password`,
+      redirectTo: new URL("/auth/callback?next=/reset-password", siteUrl.origin).toString(),
     });
   } catch (error) {
     if (error instanceof ValidationError) redirect(withMessage("/forgot-password", "error", error.message));
     throw error;
   }
-  redirect(withMessage("/forgot-password", "message", "If that account exists, a reset link is waiting in the local Mailpit inbox."));
+  const message = process.env.NODE_ENV === "development"
+    ? "If that account exists, a reset link is waiting in the local Mailpit inbox."
+    : "If that account exists, check its email for a password reset link.";
+  redirect(withMessage("/forgot-password", "message", message));
 }
 
 export async function updatePasswordAction(formData: FormData) {

@@ -1,6 +1,6 @@
 # Loop security architecture
 
-Steps 2 through 5 implement and locally test the initial database, application, private-media, communication, and PWA/Web Push authorization boundary. This remains a foundation, not a claim that a future deployment is secure.
+Steps 2 through 5 implement and locally test the initial database, application, private-media, communication, and PWA/Web Push authorization boundary. Step 6B applies the reviewed schema only to an isolated, disposable staging project. This remains a foundation, not a claim that a future deployment is secure.
 
 ## Trust boundaries
 
@@ -40,7 +40,7 @@ The browser and future mobile client are untrusted presentation layers. Authoriz
 
 - The R2 bucket remains private. Privacy also depends on a fresh RLS-authorized database lookup before every signed GET; knowing an object key is insufficient. Guardians need an active link to a tagged child, teachers need a current classroom assignment, and school administrators remain tenant-scoped. Platform administrators receive no casual child-media access.
 - Teachers receive only exact, short-lived PUT URLs after server and transactional database checks. The server generates opaque keys and signs the required object, method, and JPEG content type. The browser receives no list/delete capability or R2 credential.
-- Finalization uses a local server-only privileged client only after authenticating the uploader, checking reservation ownership/expiry, and HEAD-checking every exact R2 object against its reserved content type and byte count. Invalid uploads are deleted where practical and never become `ready`.
+- Finalization uses a server-only privileged client only after authenticating the uploader, checking reservation ownership/expiry, and HEAD-checking every exact R2 object against its reserved content type and byte count. Remote endpoints must use HTTPS. Invalid uploads are deleted where practical and never become `ready`.
 - Client-side canvas re-encoding removes embedded EXIF/location segments from supported decoded JPEG, PNG, and WebP inputs and preserves browser-decoded orientation. HEIC/HEIF and undecodable formats fail clearly; raw source bytes are never used as a fallback.
 - The `originals/` variant is a sanitized, re-encoded high-quality copy rather than the untouched camera source. Its manually configured R2 lifecycle rule expires only the `originals/` prefix after 30 days; `display/` and `thumbs/` retention is separate.
 - Storage allowance enforcement is serialized in PostgreSQL using reserved and ready byte counters. Frontend estimates are not the quota boundary.
@@ -52,15 +52,23 @@ The R2 browser CORS allowlist must contain only the exact Loop development/produ
 ## Application authentication boundary
 
 - Next.js Proxy refreshes/validates Auth claims; every protected role page independently resolves the role from database membership tables and fails closed when no membership exists.
-- Browser clients receive only the local publishable key. The service-role key is permitted only in ignored local server environment for the localhost-guarded seed and local invitation account creator. It is never prefixed `NEXT_PUBLIC`, returned to the browser, logged, or stored in generated credentials.
+- Browser clients receive only the environment's publishable key. The service-role key remains server-only: staging media finalization uses it for metadata verification/finalization, and the push dispatcher uses it for the service-only claim/completion RPCs. Local development also uses its local key for the localhost-guarded seed and invitation account creator. It is never prefixed `NEXT_PUBLIC`, returned to the browser, logged, or stored in generated credentials.
 - Local copyable invite URLs are emitted only when `NODE_ENV=development` and the Supabase API URL is exactly localhost. Production email delivery is intentionally absent.
 - Browser verification covers a valid local invitation, wrong-email denial without consuming the invitation, one successful activation, replay denial, sign-out, and denial of the protected route after sign-out.
+
+## Staging boundary
+
+- `Loop Staging` Supabase and Vercel `loop-staging` are isolated, disposable verification resources. They must never contain real nursery, child, family, staff, message, media, or push-subscription data and must never share credentials with future production resources.
+- Vercel Production is the staging environment because it tracks only the `staging` branch. Every staging secret is scoped to that Vercel environment and remains outside Git; preview aliases are not added to Supabase Auth or R2 CORS unless a later test explicitly requires and reviews them.
+- Supabase Auth must use the stable staging HTTPS origin as Site URL and allow only its exact `/auth/callback` route. Password recovery fails closed when `NEXT_PUBLIC_SITE_URL` is absent and never falls back to localhost in a production build.
+- R2 CORS must name the same exact stable staging origin. The bucket stays private, with no `r2.dev` URL; CORS does not make an object public and does not replace short-lived signed URL authorization.
+- Staging uses its own publishable/service-role keys, R2 access pair/bucket, and VAPID pair. The local seed, local invitation activation, Mailpit, test credentials, and local Supabase runtime files are development-only and must not be deployed.
 
 ## Still required in later steps
 
 - Production email delivery, account lifecycle administration, stronger abuse controls, CSRF review for any future non-form APIs, and audit retention still need implementation and testing.
 - Automated cleanup of expired reservations and retained originals, production secrets management, media moderation/incident procedures, and a monitored scheduled Web Push retry worker still require a deployed-job design.
-- Deployment hardening, secrets management, backups, recovery, monitoring, dependency response, and penetration/security review remain outstanding.
+- Production deployment hardening, environment separation review, backups, recovery, monitoring, dependency response, and penetration/security review remain outstanding.
 - Local Supabase must start through the pre-created `loop-local-network` Docker bridge. `pnpm supabase:start` supplies it through the supported CLI `--network-id` flag; do not replace it with the default generated network, forward these ports, or expose them through a tunnel.
 - On the current Windows Docker Desktop 29.7.2 host, the documented bridge option was not honored for published ports: Docker reports blank `HostIp` values rather than a localhost-only binding. Microsoft Defender Firewall is enabled, and a manual same-Wi-Fi test from another device confirmed that Studio was not reachable at the PC's LAN address (`192.168.18.35:54323`). Local Supabase may only run while host firewall protection remains enabled; the network flag alone is not a proven isolation boundary on this machine.
 - This Docker Desktop/host-firewall caveat affects only the local development stack. It is not part of, or a substitute for, the future production Loop network and deployment architecture.

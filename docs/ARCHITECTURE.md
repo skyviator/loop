@@ -35,7 +35,7 @@ The first-party `/sw.js` service worker is registered with `updateViaCache: "non
 
 Web Push writes are asynchronous. Database triggers append minimal event metadata after authoritative attendance, message, important-announcement, or ready-photo writes. The Next.js mutation path schedules a best-effort post-response dispatcher. Delivery claims recalculate current guardian links, memberships, classroom assignments, feature availability, and user preferences, then send a generic lock-screen payload with only a same-origin relative route. A retained outbox supports retries; a production scheduled worker and monitoring design remain required before deployment.
 
-`apps/web/lib/supabase` contains typed browser and server client factories using `@supabase/ssr`. Next.js `proxy.ts` performs Auth claim validation/session cookie refresh when local public environment variables exist; it does not authorize database rows or redirect the Step 1 welcome page. RLS remains the data boundary. Browser code uses only the publishable key.
+`apps/web/lib/supabase` contains typed browser and server client factories using `@supabase/ssr`. Next.js `proxy.ts` performs Auth claim validation/session cookie refresh when public environment variables exist; it does not authorize database rows or redirect the Step 1 welcome page. RLS remains the data boundary. Browser code uses only the publishable key. The server-only privileged factory accepts either the exact local CLI endpoint or an HTTPS Supabase endpoint; only media finalization and push delivery use it outside local development, while invitation account creation remains localhost- and development-guarded.
 
 ## Local backend
 
@@ -70,3 +70,5 @@ Messaging uses one guardian-to-school thread per guardian/child pair. PostgreSQL
 ## Configuration
 
 Root scripts provide one entry point for development, linting, type checking, and production builds. Versions are pinned and recorded in the lockfile for reproducible installs.
+
+Step 6B introduces no deployment topology beyond isolated staging preparation. The private Vercel `loop-staging` project uses `apps/web` as its Root Directory and treats the `staging` branch as its Production environment; the stable project origin, not an ephemeral deployment URL, must be used for Auth redirects and R2 CORS. The linked `Loop Staging` Supabase project receives migration-only schema changes and no local seed or real data. A later production release requires separate Supabase, Vercel, R2, VAPID, email, backup, monitoring, and secret material.

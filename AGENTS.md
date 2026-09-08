@@ -4,8 +4,9 @@ Loop is a privacy-sensitive, multi-tenant nursery/preschool parent communication
 
 ## Current boundary
 
-- Step 5 adds installable PWA guidance, a first-party no-fetch-cache service worker, safe update/offline UI, and privacy-preserving Web Push for focused attendance, message, important-announcement, and optional-photo events.
-- Supabase remains local. Do not link or deploy a cloud Supabase project, deploy Loop, connect Vercel or GitHub, or add billing, payments, production email delivery, attachments, broad offline caching/background sync, or short video without an explicit later step.
+- Steps 1 through 5 implement the local foundation, core workflows, private media/communication, and the PWA/Loop Push foundation. Step 6B prepares only the isolated, disposable staging environment.
+- The committed migration chain may be applied to the dedicated Loop Staging Supabase project. Never reset that linked database, include the local seed, add real child/family/school data, or reuse its credentials for production.
+- The Vercel `loop-staging` project is staging-only and tracks the `staging` branch. Do not deploy, create production resources, add billing/payments/production email, attachments, broad offline caching/background sync, or short video without an explicit later step.
 - Use pnpm from the repository root. App checks are `pnpm lint`, `pnpm typecheck`, `pnpm build`; local database commands are `pnpm supabase:start`, `pnpm supabase:stop`, `pnpm supabase:reset`, `pnpm supabase:test`, and `pnpm supabase:types`.
 - Create schema changes with a new migration. Never hand-edit generated database types; regenerate them from the local database after a successful reset.
 
@@ -42,6 +43,7 @@ Loop is a privacy-sensitive, multi-tenant nursery/preschool parent communication
 - Never expose service-role keys. Validate untrusted input and protect against IDOR, XSS, CSRF, SQL injection, and privilege escalation.
 - Use secure session handling and audit security-relevant/admin actions. Do not put sensitive child details in notification or lock-screen copy by default.
 - Platform administration is not a child-data bypass. Keep privileged helpers in the unexposed `private` schema with explicit `search_path` and execute grants.
+- Service-role, VAPID-private, R2, database, and deployment credentials are server-only and environment-specific. Never print them or prefix them with `NEXT_PUBLIC_`.
 
 ## Change checklist
 

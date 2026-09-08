@@ -3,7 +3,7 @@ import "server-only";
 import webpush from "web-push";
 
 import { classifyPushFailure, notificationPayload } from "@/lib/push/policy";
-import { createLocalAdminClient } from "@/lib/supabase/admin";
+import { createServerAdminClient } from "@/lib/supabase/admin";
 
 type ClaimedDelivery = {
   delivery_id: string;
@@ -30,7 +30,7 @@ function configureVapid() {
 export async function dispatchPendingPush(batchSize = 25): Promise<PushDispatchResult> {
   const result: PushDispatchResult = { claimed: 0, succeeded: 0, temporaryFailures: 0, permanentFailures: 0 };
   if (!configureVapid()) return result;
-  const admin = createLocalAdminClient();
+  const admin = createServerAdminClient();
   const claimed = await admin.rpc("claim_push_deliveries", { batch_size: batchSize });
   if (claimed.error) return result;
   const deliveries = (claimed.data ?? []) as ClaimedDelivery[];

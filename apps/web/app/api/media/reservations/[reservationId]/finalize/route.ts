@@ -2,7 +2,7 @@ import { getViewer } from "@/lib/auth";
 import { hasSameOrigin } from "@/lib/request-security";
 import { schedulePushDispatch } from "@/lib/push/schedule";
 import { deletePhotoObject, headPhotoObject } from "@/lib/r2";
-import { createLocalAdminClient } from "@/lib/supabase/admin";
+import { createServerAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request, context: { params: Promise<{ reservationId: string }> }) {
@@ -17,7 +17,7 @@ export async function POST(request: Request, context: { params: Promise<{ reserv
     return Response.json({ error: "The upload reservation is unavailable." }, { status: 404 });
   }
 
-  const admin = createLocalAdminClient();
+  const admin = createServerAdminClient();
   const asset = await admin.from("media_assets").select("id").eq("reservation_id", reservationId).single();
   const variants = asset.data
     ? await admin.from("media_variants").select("kind, object_key, content_type, byte_size").eq("asset_id", asset.data.id)

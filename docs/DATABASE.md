@@ -1,4 +1,4 @@
-# Loop local database foundation
+# Loop database foundation
 
 ## Tenancy and identities
 
@@ -68,7 +68,9 @@ The service-only claim function materializes and rechecks recipients from curren
 
 ## Deferred
 
-No cloud Supabase project, billing, production email delivery, external calendar sync, attachments, or deployment is included in Step 5. Short video remains disabled because browser-only handling cannot provide a dependable cross-platform metadata-removal and transcoding pipeline; a later native media or Cloudflare Stream design is required.
+Step 5 included no cloud database or deployment. Step 6B applies only the ordered migration chain to the isolated, disposable `Loop Staging` Supabase project; local seed data is never included and real nursery data is prohibited. Billing, production email delivery, external calendar sync, attachments, production resources, and deployment remain deferred. Short video remains disabled because browser-only handling cannot provide a dependable cross-platform metadata-removal and transcoding pipeline; a later native media or Cloudflare Stream design is required.
+
+When staging data is explicitly authorized later, create only clearly fictional schools, staff, guardians, and children with reserved non-deliverable email domains; generate synthetic media with no people or metadata; keep credentials in the approved secret store rather than Git; include two tenants plus assigned/unassigned role cases for RLS checks; and provide a documented full cleanup path. Do not run `seed:local` against the linked project or copy any local/production records into staging.
 
 ## Local Docker network
 
