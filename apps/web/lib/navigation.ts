@@ -10,5 +10,6 @@ export function communicationNavigation(role: AppRole): NavItem[] {
     { href: home, label: role === "guardian" || role === "teacher" ? "Today" : "Overview", icon: "home" },
     { href: "/messages", label: "Messages", icon: "message" },
     { href: "/updates", label: "Updates", icon: "announcement" },
+    { href: "/settings", label: "Settings", icon: "settings" },
   ];
 }

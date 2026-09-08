@@ -276,6 +276,20 @@ progress { width: 100%; height: .55rem; border: 0; border-radius: 4px; overflow:
 .calendar-row span { color: var(--loop-text-muted); font-size: .72rem; }
 .calendar-row p { margin: .35rem 0 0; font-size: .8rem; }
 
+.connectivity-banner, .update-banner { position: fixed; z-index: 60; right: 1rem; left: calc(236px + 1rem); display: flex; min-height: 48px; align-items: center; justify-content: center; gap: 1rem; border: 1px solid var(--loop-border-strong); margin: 0; background: var(--loop-surface); padding: .65rem 1rem; color: var(--loop-text); font-size: .78rem; box-shadow: 0 4px 16px rgba(36,50,56,.08); }
+.connectivity-banner { top: 1rem; }
+.update-banner { bottom: 1rem; }
+.settings-stack { display: grid; max-width: 52rem; gap: 1rem; }
+.settings-panel { margin: 0; }
+.settings-panel .section-heading > svg { color: var(--loop-primary); }
+.settings-panel > .button { margin-top: .75rem; }
+.instruction-list { display: grid; gap: .5rem; }
+.instruction-list p { display: flex; min-height: 48px; align-items: center; gap: .75rem; border-bottom: 1px solid var(--loop-border); margin: 0; color: var(--loop-text-muted); font-size: .82rem; }
+.instruction-list svg { flex: 0 0 auto; color: var(--loop-primary); }
+.notification-preferences { margin-top: .75rem; }
+.notification-preferences .check-field { min-height: 48px; align-items: center; border-bottom: 1px solid var(--loop-border); }
+.notification-preferences .check-field small { display: block; color: var(--loop-text-muted); font-size: .7rem; font-weight: 500; }
+
 @media (max-width: 1050px) {
   .content-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .span-two { grid-column: span 2; }
@@ -283,6 +297,9 @@ progress { width: 100%; height: .55rem; border: 0; border-radius: 4px; overflow:
 }
 
 @media (max-width: 760px) {
+  .connectivity-banner, .update-banner { right: .75rem; left: .75rem; }
+  .connectivity-banner { top: .75rem; }
+  .update-banner { bottom: calc(69px + .75rem); }
   .app-frame { display: block; padding-bottom: 69px; }
   .side-nav { position: fixed; z-index: 20; top: auto; right: 0; bottom: 0; left: 0; width: auto; height: 69px; flex-direction: row; align-items: stretch; border-top: 1px solid var(--loop-border); border-right: 0; background: var(--loop-surface); padding: 0 max(.25rem, env(safe-area-inset-right)) max(0px, env(safe-area-inset-bottom)) max(.25rem, env(safe-area-inset-left)); color: var(--loop-text-muted); }
   .brand-link, .nav-signout { display: none; }

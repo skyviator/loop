@@ -13,6 +13,7 @@ $$;
 -- Keep the security suite deterministic even when the optional local demo seed
 -- has been loaded. The surrounding transaction restores that seed afterward.
 truncate table
+  public.notification_preferences,
   public.audit_log,
   public.invitations,
   public.attendance_records,
@@ -209,12 +210,12 @@ insert into public.calendar_events (id, school_id, target_scope, title, starts_a
 
 select extensions.is(
   (select count(*)::integer from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r'),
-  31,
-  'exactly 31 public application tables exist'
+  32,
+  'exactly 32 public application tables exist'
 );
 select extensions.is(
   (select count(*)::integer from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity),
-  31,
+  32,
   'RLS is enabled on every public application table'
 );
 
@@ -393,6 +394,178 @@ select pg_temp.throws_any(
     '[{"child_id":"a0000000-0000-0000-0000-000000000030","meal_outcome":"ate_little"},{"child_id":"a0000000-0000-0000-0000-000000000031","meal_outcome":"ate_little"}]'::jsonb
   )$$,
   'one absent child rejects the complete care batch'
+);
+reset role;
+
+-- Step 5 push capabilities stay private, preferences are self-only, and
+-- recipient eligibility is recalculated from current relationships.
+select extensions.is(
+  (select count(*)::integer from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r'),
+  32,
+  'exactly 32 public application tables exist after notification preferences'
+);
+select extensions.is(
+  (select count(*)::integer from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity),
+  32,
+  'RLS remains enabled on every public application table'
+);
+select extensions.is(
+  (select count(*)::integer from pg_catalog.pg_trigger t join pg_catalog.pg_proc p on p.oid = t.tgfoid where t.tgrelid = 'public.care_events'::regclass and p.proname = 'enqueue_push_event'),
+  0,
+  'routine care events have no push trigger'
+);
+
+set local role anon;
+select set_config('request.jwt.claim.sub', '', true);
+select pg_temp.throws_any('select * from public.notification_preferences', 'anonymous users cannot read notification preferences');
+select pg_temp.throws_any($$select public.register_push_subscription('https://push.example/anon-device', repeat('a', 32), repeat('b', 16))$$, 'anonymous users cannot register push capabilities');
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select extensions.lives_ok(
+  $$insert into public.notification_preferences (user_id) values ('10000000-0000-0000-0000-000000000003')$$,
+  'guardian can create only their own notification preferences'
+);
+select pg_temp.throws_any(
+  $$insert into public.notification_preferences (user_id) values ('20000000-0000-0000-0000-000000000003')$$,
+  'guardian cannot create preferences for another user or school'
+);
+select extensions.is((select count(*)::integer from public.notification_preferences), 1, 'guardian cannot enumerate another user preferences');
+select extensions.lives_ok(
+  $$select public.register_push_subscription('https://push.example/guardian-a', repeat('g', 32), repeat('h', 16))$$,
+  'guardian can register the current device without supplying a user id'
+);
+select extensions.lives_ok(
+  $$select public.register_push_subscription('https://push.example/guardian-a-spare', repeat('i', 32), repeat('j', 16))$$,
+  'guardian can register multiple devices'
+);
+select extensions.ok(
+  public.deactivate_push_subscription('https://push.example/guardian-a-spare'),
+  'guardian can deactivate their own current device'
+);
+select pg_temp.throws_any('select * from private.push_subscriptions', 'guardian cannot enumerate private push endpoints or keys');
+select pg_temp.throws_any('select * from private.notification_outbox', 'guardian cannot read the private notification outbox');
+select pg_temp.throws_any('select public.claim_push_deliveries(10)', 'guardian cannot claim arbitrary recipients or delivery capabilities');
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.register_push_subscription('https://push.example/guardian-a', repeat('t', 32), repeat('u', 16))$$,
+  'another authenticated identity cannot take over an active device endpoint'
+);
+select extensions.lives_ok(
+  $$select public.register_push_subscription('https://push.example/teacher-a', repeat('t', 32), repeat('u', 16))$$,
+  'teacher can register their own device'
+);
+reset role;
+
+select set_config('request.jwt.claim.sub', '90000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.register_push_subscription('https://push.example/platform', repeat('p', 32), repeat('q', 16))$$,
+  'platform administrator cannot register for child or school pushes'
+);
+select pg_temp.throws_any(
+  $$insert into public.notification_preferences (user_id) values ('90000000-0000-0000-0000-000000000001')$$,
+  'platform administrator cannot create school notification preferences'
+);
+reset role;
+
+select extensions.is(
+  (select count(*)::integer from private.notification_outbox where
+    (event_type = 'attendance_check_in' and source_id in ('a0000000-0000-0000-0000-000000000080', 'b0000000-0000-0000-0000-000000000080'))
+    or (event_type = 'message' and source_id in ('a0000000-0000-0000-0000-000000000121', 'b0000000-0000-0000-0000-000000000121'))),
+  4,
+  'authoritative attendance and message fixture writes enqueue focused events for both schools'
+);
+select extensions.is(
+  (select count(*)::integer from private.notification_outbox where event_type = 'photo'),
+  2,
+  'ready photo writes enqueue an optional photo event for both schools'
+);
+select extensions.is(
+  (select count(*)::integer from private.notification_outbox where event_type = 'important_announcement'),
+  0,
+  'normal announcements do not enqueue important-announcement pushes'
+);
+select extensions.is(
+  private.user_can_receive_push_event(
+    '10000000-0000-0000-0000-000000000003',
+    (select id from private.notification_outbox where event_type = 'photo' and school_id = 'a0000000-0000-0000-0000-000000000001')
+  ),
+  false,
+  'optional photo delivery is disabled by default'
+);
+update public.notification_preferences set photos_enabled = true where user_id = '10000000-0000-0000-0000-000000000003';
+select extensions.ok(
+  private.user_can_receive_push_event(
+    '10000000-0000-0000-0000-000000000003',
+    (select id from private.notification_outbox where event_type = 'photo' and school_id = 'a0000000-0000-0000-0000-000000000001')
+  ),
+  'guardian who opted in and remains linked can receive a photo push'
+);
+update public.child_guardians set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000060';
+select extensions.is(
+  private.user_can_receive_push_event(
+    '10000000-0000-0000-0000-000000000003',
+    (select id from private.notification_outbox where event_type = 'attendance_check_in' and school_id = 'a0000000-0000-0000-0000-000000000001')
+  ),
+  false,
+  'revoked guardian link prevents attendance delivery before claim'
+);
+update public.child_guardians set status = 'active' where id = 'a0000000-0000-0000-0000-000000000060';
+
+insert into public.messages (id, thread_id, school_id, sender_membership_id, sender_user_id, body)
+values ('a0000000-0000-0000-0000-000000000122', 'a0000000-0000-0000-0000-000000000120', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000043', '10000000-0000-0000-0000-000000000003', 'Guardian reply');
+select extensions.ok(
+  private.user_can_receive_push_event('10000000-0000-0000-0000-000000000002', (select id from private.notification_outbox where source_id = 'a0000000-0000-0000-0000-000000000122')),
+  'currently assigned teacher is a database-derived message recipient'
+);
+update public.classroom_staff_assignments set status = 'inactive', ends_on = current_date where id = 'a0000000-0000-0000-0000-000000000045';
+select extensions.is(
+  private.user_can_receive_push_event('10000000-0000-0000-0000-000000000002', (select id from private.notification_outbox where source_id = 'a0000000-0000-0000-0000-000000000122')),
+  false,
+  'revoked teacher assignment prevents message delivery before claim'
+);
+update public.classroom_staff_assignments set status = 'active', ends_on = null where id = 'a0000000-0000-0000-0000-000000000045';
+delete from public.messages where id = 'a0000000-0000-0000-0000-000000000122';
+
+set local role service_role;
+select extensions.ok(
+  (select count(*) > 0 from public.claim_push_deliveries(25)),
+  'service delivery worker can claim eligible private capabilities without client-selected recipients'
+);
+reset role;
+create temporary table pg_temp.claimed_push_delivery_ids as
+select id, row_number() over (order by id) as position from private.push_deliveries where status = 'sending';
+select extensions.lives_ok(
+  format('select public.complete_push_delivery(%L::uuid, %L, 201)', (select id from pg_temp.claimed_push_delivery_ids where position = 1), 'success'),
+  'successful push delivery records only its HTTP status and completion'
+);
+select extensions.is(
+  (select status::text from private.push_deliveries where id = (select id from pg_temp.claimed_push_delivery_ids where position = 1)),
+  'succeeded',
+  'successful push delivery reaches succeeded state'
+);
+select extensions.lives_ok(
+  format('select public.complete_push_delivery(%L::uuid, %L, 410)', (select id from pg_temp.claimed_push_delivery_ids where position = 2), 'permanent_failure'),
+  'HTTP 410 is handled as an expired permanent failure'
+);
+select extensions.is(
+  (select status::text from private.push_subscriptions where id = (select subscription_id from private.push_deliveries where id = (select id from pg_temp.claimed_push_delivery_ids where position = 2))),
+  'inactive',
+  'HTTP 404 or 410 handling deactivates the expired endpoint'
+);
+select extensions.lives_ok(
+  format('select public.complete_push_delivery(%L::uuid, %L, 503)', (select id from pg_temp.claimed_push_delivery_ids where position = 3), 'temporary_failure'),
+  'temporary push failure is accepted for bounded retry'
+);
+select extensions.is(
+  (select status::text from private.push_deliveries where id = (select id from pg_temp.claimed_push_delivery_ids where position = 3)),
+  'temporary_failure',
+  'temporary push failure remains retryable without storing a response body'
 );
 reset role;
 select extensions.is(

@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import type { ReactNode } from "react";
 
+import { PwaProvider } from "@/components/pwa-provider";
+
 import "./globals.css";
 
 const manrope = localFont({
@@ -33,8 +35,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en" className={manrope.variable}>
-      <body className="font-sans antialiased">{children}</body>
+      <body className="font-sans antialiased"><PwaProvider>{children}</PwaProvider></body>
     </html>
   );
 }
-

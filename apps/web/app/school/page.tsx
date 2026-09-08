@@ -35,7 +35,8 @@ const nav = [
   { href: "/school#features", label: "Features", icon: "settings" as const },
   { href: "/messages", label: "Messages", icon: "message" as const },
   { href: "/updates", label: "Updates", icon: "announcement" as const },
-  { href: "/school#settings", label: "Settings", icon: "settings" as const },
+  { href: "/school#settings", label: "School", icon: "settings" as const },
+  { href: "/settings", label: "My settings", icon: "bell" as const },
 ];
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];

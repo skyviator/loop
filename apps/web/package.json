@@ -4,11 +4,13 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "next dev",
+    "dev:https": "next dev --experimental-https --hostname 127.0.0.1",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run lib",
+    "test:pwa": "vitest run lib/pwa/service-worker.test.ts lib/push/policy.test.ts",
     "seed:local": "node scripts/seed-local.mjs",
     "test:r2": "node --env-file=.env.local scripts/verify-r2.mjs"
   },
@@ -23,6 +25,10 @@
     "@supabase/supabase-js": "2.116.0",
     "next": "16.3.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "web-push": "3.6.7"
+  },
+  "devDependencies": {
+    "@types/web-push": "3.6.4"
   }
 }

@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { emailAddress, oneOf, requiredText, uuid, ValidationError } from "@loop/validation";
 
 import { requireViewer } from "@/lib/auth";
+import { schedulePushDispatch } from "@/lib/push/schedule";
 import { createClient } from "@/lib/supabase/server";
 
 function localDate(timezone: string) {
@@ -373,6 +374,7 @@ export async function setAttendanceAction(formData: FormData) {
     if (record.error || record.data.status !== "present" || record.data.checked_out_at) throw new Error("Only a currently present child can be checked out.");
     const { error } = await supabase.from("attendance_records").update({ checked_out_at: new Date().toISOString(), recorded_by_membership_id: viewer.membershipId, recorded_by_user_id: viewer.userId }).eq("id", record.data.id);
     if (error) throw new Error(error.message);
+    schedulePushDispatch();
     revalidatePath("/teacher");
     return;
   }
@@ -383,6 +385,7 @@ export async function setAttendanceAction(formData: FormData) {
     checked_out_at: null, recorded_by_membership_id: viewer.membershipId, recorded_by_user_id: viewer.userId,
   }, { onConflict: "child_id,service_date" });
   if (error) throw new Error(error.message);
+  schedulePushDispatch();
   revalidatePath("/teacher");
 }
 
@@ -409,6 +412,7 @@ export async function bulkCheckInAction(formData: FormData) {
   if (!rows.length) throw new Error("The selected children are already resolved for today.");
   const { error } = await supabase.from("attendance_records").upsert(rows, { onConflict: "child_id,service_date" });
   if (error) throw new Error(error.message);
+  schedulePushDispatch();
   revalidatePath("/teacher");
 }
 

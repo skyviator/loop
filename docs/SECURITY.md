@@ -1,6 +1,6 @@
 # Loop security architecture
 
-Steps 2 through 4 implement and locally test the initial database, application, private-media, and communication authorization boundary. This remains a foundation, not a claim that a future deployment is secure.
+Steps 2 through 5 implement and locally test the initial database, application, private-media, communication, and PWA/Web Push authorization boundary. This remains a foundation, not a claim that a future deployment is secure.
 
 ## Trust boundaries
 
@@ -23,6 +23,18 @@ The browser and future mobile client are untrusted presentation layers. Authoriz
 - Teacher timetable writes require the school permission, an active teacher membership, the timetable feature, and an active assignment to that classroom.
 - Invitation redemption uses a non-exposed `private` definer function behind an invoker wrapper. It requires an authenticated user, compares the Auth email with the stored invitation email, locks the pending unexpired token-hash row, creates only the invited role, and prevents replay.
 - pgTAP exercises anonymous, School A/B admins, assigned and unassigned teachers, guardians, and a platform administrator across SELECT, INSERT, UPDATE, DELETE, and protected RPCs. Step 4 adds negative coverage for media consent, assignment, tenant, platform and anonymous access, quotas, private guardian threads, Realtime topic authorization, targeted announcements/calendar, and teacher/guardian mutation denial. Fixtures roll back.
+
+## PWA and Web Push boundary
+
+- The service worker does not intercept `fetch` and does not use Cache Storage or background sync. Loop therefore never treats stale cached child, attendance, care, message, or media data as authoritative offline.
+- Notification permission is requested only after the signed-in user selects the device enable action. On iOS/iPadOS, Loop first requires the Home Screen installed-app context. Browser states remain explicit: default, granted, denied, or unsupported.
+- VAPID private material is server-only. The public VAPID key is intentionally client-visible; the private key and subject remain in ignored local environment configuration. No R2 credential, service-role credential, push endpoint, encryption key, or signed URL is placed in a `NEXT_PUBLIC_` variable, rendered HTML, database notification payload, or application log.
+- Raw push endpoints plus `p256dh` and auth keys live only in the unexposed `private` schema. Authenticated wrappers derive `auth.uid()` internally, prevent takeover of another active device endpoint, and allow only the current user to deactivate their registration. Platform administrators are excluded.
+- The outbox stores only event type, authoritative source ID, school, generic copy, and a relative internal route. Delivery claims derive recipients from current database relationships and preferences immediately before send. A revoked guardian link, inactive membership, ended teacher assignment, disabled feature, or disabled preference prevents future delivery.
+- Lock-screen copy never contains message bodies, care details, child names, R2 object keys/URLs, signed URLs, tokens, or secrets. A click may open only a same-origin relative route, and the destination page still reauthorizes data through normal server/RLS controls.
+- HTTP 404/410 deactivates an expired subscription. Temporary failures use bounded retry metadata; stored delivery results contain status class and HTTP status only, never provider response bodies or capabilities.
+- The local Edge desktop attempt reached explicit notification permission but `PushManager.subscribe()` failed with `AbortError: Registration failed - permission denied`; this is recorded as an environment limitation, not a successful operating-system notification test and not an application-security bypass.
+- Final physical iPhone/iPad verification remains pending an HTTPS staging deployment. It must test Safari Add to Home Screen, opening the installed web app, explicit notification permission, receipt, and an authenticated deep-link destination; no insecure public development tunnel is permitted as a substitute.
 
 ## Private media boundary
 
@@ -47,7 +59,7 @@ The R2 browser CORS allowlist must contain only the exact Loop development/produ
 ## Still required in later steps
 
 - Production email delivery, account lifecycle administration, stronger abuse controls, CSRF review for any future non-form APIs, and audit retention still need implementation and testing.
-- Automated cleanup of expired reservations and retained originals, production secrets management, media moderation/incident procedures, and notification privacy still require a deployed-job design.
+- Automated cleanup of expired reservations and retained originals, production secrets management, media moderation/incident procedures, and a monitored scheduled Web Push retry worker still require a deployed-job design.
 - Deployment hardening, secrets management, backups, recovery, monitoring, dependency response, and penetration/security review remain outstanding.
 - Local Supabase must start through the pre-created `loop-local-network` Docker bridge. `pnpm supabase:start` supplies it through the supported CLI `--network-id` flag; do not replace it with the default generated network, forward these ports, or expose them through a tunnel.
 - On the current Windows Docker Desktop 29.7.2 host, the documented bridge option was not honored for published ports: Docker reports blank `HostIp` values rather than a localhost-only binding. Microsoft Defender Firewall is enabled, and a manual same-Wi-Fi test from another device confirmed that Studio was not reachable at the PC's LAN address (`192.168.18.35:54323`). Local Supabase may only run while host firewall protection remains enabled; the network flag alone is not a proven isolation boundary on this machine.

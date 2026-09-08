@@ -1,10 +1,9 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { signOutAction } from "@/app/actions/auth";
-
 import { LoopIcon, type LoopIconName } from "./loop-icon";
 import { LoopLogo } from "./logo";
+import { SignOutButton } from "./sign-out-button";
 
 type NavItem = { href: string; label: string; icon: LoopIconName };
 
@@ -21,14 +20,12 @@ export function AppShell({ eyebrow, title, nav, children }: { eyebrow: string; t
             </Link>
           ))}
         </nav>
-        <form action={signOutAction} className="nav-signout">
-          <button className="nav-link w-full" type="submit"><LoopIcon name="signout" className="size-5" />Sign out</button>
-        </form>
+        <SignOutButton />
       </aside>
       <div className="app-main">
         <header className="app-header">
           <div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div>
-          <form action={signOutAction}><button className="button button-secondary mobile-signout" type="submit">Sign out</button></form>
+          <SignOutButton mobile />
         </header>
         <main className="content">{children}</main>
       </div>

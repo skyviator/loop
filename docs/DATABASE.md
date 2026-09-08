@@ -56,9 +56,19 @@ High-quality, display, and thumbnail keys use separate global prefixes: `origina
 
 `announcements` and `calendar_events` have normalized school, branch, or classroom targets. RLS filters guardian and teacher reads to current linked/assigned contexts, while mutations combine the feature gate, tenant target validation, administrator role, and the two default-off teacher permission settings. Times are stored as instants and form input is interpreted in the school's IANA timezone.
 
+## Step 5 PWA and push
+
+`notification_preferences` is the sole exposed Step 5 table. RLS permits an active school user to select, insert, or update only their own row. Attendance, messages, and important announcements default on; photo notifications default off. Platform administrators have no school-notification preference or subscription path.
+
+`private.push_subscriptions` stores endpoint capabilities and Web Push encryption keys outside the exposed schema. Registration and deactivation wrappers derive the caller from `auth.uid()` and never accept a recipient/user ID. One person may register multiple devices; an active endpoint cannot be reassigned to another account, and current-device sign-out attempts deactivation first.
+
+`private.notification_outbox` stores minimal event references and generic privacy-safe copy. Database triggers enqueue only attendance check-in/check-out, new message, newly published important announcement, and ready photo events. `care_events`, timetable tables, normal announcements, and other routine activity have no push trigger. `private.push_deliveries` records per-subscription delivery state, bounded attempts, status class, and HTTP status without response bodies.
+
+The service-only claim function materializes and rechecks recipients from current memberships, guardian links, classroom assignments, targets, feature state, and preferences using `FOR UPDATE SKIP LOCKED`. Revocation therefore blocks pending as well as future delivery. A 404/410 completion marks the endpoint inactive; temporary failures receive bounded exponential retry metadata. The local Next.js dispatcher is best effort after successful writes, while the retained outbox requires a monitored scheduled worker before production deployment.
+
 ## Deferred
 
-No cloud Supabase project, billing, push, production email delivery, external calendar sync, attachments, or deployment is included in Step 4. Short video remains disabled because browser-only handling cannot provide a dependable cross-platform metadata-removal and transcoding pipeline; a later native media or Cloudflare Stream design is required.
+No cloud Supabase project, billing, production email delivery, external calendar sync, attachments, or deployment is included in Step 5. Short video remains disabled because browser-only handling cannot provide a dependable cross-platform metadata-removal and transcoding pipeline; a later native media or Cloudflare Stream design is required.
 
 ## Local Docker network
 

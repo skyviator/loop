@@ -9,7 +9,7 @@ import { TeacherMediaPanel } from "@/components/teacher-media-panel";
 import { requireViewer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
-const nav = [{ href: "/teacher", label: "Today", icon: "home" as const }, { href: "/teacher#attendance", label: "Attendance", icon: "attendance" as const }, { href: "/teacher#care", label: "Record care", icon: "note" as const }, { href: "/messages", label: "Messages", icon: "message" as const }, { href: "/updates", label: "Updates", icon: "announcement" as const }];
+const nav = [{ href: "/teacher", label: "Today", icon: "home" as const }, { href: "/teacher#attendance", label: "Attendance", icon: "attendance" as const }, { href: "/teacher#care", label: "Record care", icon: "note" as const }, { href: "/messages", label: "Messages", icon: "message" as const }, { href: "/updates", label: "Updates", icon: "announcement" as const }, { href: "/settings", label: "Settings", icon: "settings" as const }];
 
 export default async function TeacherPage() {
   const viewer = await requireViewer(["teacher"]);

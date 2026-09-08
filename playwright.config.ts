@@ -7,9 +7,10 @@ export default defineConfig({
   retries: 0,
   reporter: "line",
   use: {
-    baseURL: "http://127.0.0.1:3000",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000",
     browserName: "chromium",
     channel: "msedge",
+    ignoreHTTPSErrors: process.env.PLAYWRIGHT_BASE_URL?.startsWith("https://") ?? false,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },

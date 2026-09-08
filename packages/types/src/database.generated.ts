@@ -1219,6 +1219,36 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          attendance_enabled: boolean
+          created_at: string
+          important_announcements_enabled: boolean
+          messages_enabled: boolean
+          photos_enabled: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attendance_enabled?: boolean
+          created_at?: string
+          important_announcements_enabled?: boolean
+          messages_enabled?: boolean
+          photos_enabled?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attendance_enabled?: boolean
+          created_at?: string
+          important_announcements_enabled?: boolean
+          messages_enabled?: boolean
+          photos_enabled?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       plan_features: {
         Row: {
           created_at: string
@@ -1667,6 +1697,31 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_push_deliveries: {
+        Args: { batch_size?: number }
+        Returns: {
+          auth_secret: string
+          body: string
+          delivery_id: string
+          endpoint: string
+          event_type: Database["public"]["Enums"]["notification_event_type"]
+          p256dh: string
+          route: string
+          title: string
+        }[]
+      }
+      complete_push_delivery: {
+        Args: {
+          outcome: string
+          response_status?: number
+          target_delivery_id: string
+        }
+        Returns: undefined
+      }
+      deactivate_push_subscription: {
+        Args: { subscription_endpoint: string }
+        Returns: boolean
+      }
       end_sleep_batch: {
         Args: { sleep_event_ids: string[]; target_classroom_id: string }
         Returns: number
@@ -1699,6 +1754,14 @@ export type Database = {
         Returns: number
       }
       redeem_invitation: { Args: { invitation_token: string }; Returns: string }
+      register_push_subscription: {
+        Args: {
+          subscription_auth: string
+          subscription_endpoint: string
+          subscription_p256dh: string
+        }
+        Returns: string
+      }
       reserve_photo_upload: {
         Args: {
           photo_caption?: string
@@ -1738,6 +1801,12 @@ export type Database = {
       media_consent_state: "not_recorded" | "granted" | "denied"
       media_upload_status: "reserved" | "ready" | "failed" | "expired"
       media_variant_kind: "original" | "display" | "thumbnail"
+      notification_event_type:
+        | "attendance_check_in"
+        | "attendance_check_out"
+        | "message"
+        | "important_announcement"
+        | "photo"
       publication_status: "draft" | "published" | "archived"
       record_status: "active" | "inactive" | "archived"
       school_role: "school_admin" | "teacher" | "guardian"
@@ -1902,6 +1971,13 @@ export const Constants = {
       media_consent_state: ["not_recorded", "granted", "denied"],
       media_upload_status: ["reserved", "ready", "failed", "expired"],
       media_variant_kind: ["original", "display", "thumbnail"],
+      notification_event_type: [
+        "attendance_check_in",
+        "attendance_check_out",
+        "message",
+        "important_announcement",
+        "photo",
+      ],
       publication_status: ["draft", "published", "archived"],
       record_status: ["active", "inactive", "archived"],
       school_role: ["school_admin", "teacher", "guardian"],

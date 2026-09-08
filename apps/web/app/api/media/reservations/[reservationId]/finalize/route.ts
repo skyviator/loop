@@ -1,5 +1,6 @@
 import { getViewer } from "@/lib/auth";
 import { hasSameOrigin } from "@/lib/request-security";
+import { schedulePushDispatch } from "@/lib/push/schedule";
 import { deletePhotoObject, headPhotoObject } from "@/lib/r2";
 import { createLocalAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -33,6 +34,7 @@ export async function POST(request: Request, context: { params: Promise<{ reserv
     }));
     const finalized = await admin.rpc("finalize_photo_upload", { target_reservation_id: reservationId, actual_manifest: actualManifest });
     if (finalized.error) throw finalized.error;
+    schedulePushDispatch();
     return Response.json({ assetId: finalized.data }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     await Promise.allSettled(variants.data.map((variant) => deletePhotoObject(variant.object_key)));

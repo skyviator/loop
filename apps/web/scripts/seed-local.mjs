@@ -210,6 +210,8 @@ await result(admin.from("calendar_events").insert({
 
 const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Colombo" }).format(new Date());
 const weekday = new Date(`${today}T00:00:00+05:30`).getUTCDay() || 7;
+const todayStart = new Date(`${today}T00:00:00+05:30`).getTime();
+const checkedInAt = new Date(Math.max(todayStart, Date.now() - 5 * 60_000)).toISOString();
 const slots = [
   ["08:30", "09:00", "Arrival and welcome", null],
   ["09:00", "09:30", "Circle time", "activities"],
@@ -230,7 +232,7 @@ const attendance = children.map((child, index) => ({
   enrollment_id: enrollments[index].id,
   service_date: today,
   status: index < 12 ? "present" : index < 14 ? "expected" : "absent",
-  checked_in_at: index < 12 ? new Date(`${today}T08:15:00+05:30`).toISOString() : null,
+  checked_in_at: index < 12 ? checkedInAt : null,
   recorded_by_membership_id: teacherMembershipId,
   recorded_by_user_id: byRole.teacher.id,
 }));

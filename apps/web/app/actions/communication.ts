@@ -6,6 +6,7 @@ import { oneOf, requiredText, uuid } from "@loop/validation";
 
 import type { ActionState } from "@/app/actions/core";
 import { requireViewer } from "@/lib/auth";
+import { schedulePushDispatch } from "@/lib/push/schedule";
 import { createClient } from "@/lib/supabase/server";
 
 function actionError(error: unknown, fallback: string): ActionState {
@@ -61,6 +62,7 @@ export async function sendMessageAction(_previous: ActionState, formData: FormDa
       body,
     });
     if (error) return { status: "error", message: "The message was not sent. Your access may have changed." };
+    schedulePushDispatch();
     revalidatePath("/messages");
     return { status: "success", message: "Message sent." };
   } catch (error) {
@@ -100,6 +102,7 @@ export async function saveAnnouncementAction(formData: FormData) {
     ? await supabase.from("announcements").update(record).eq("id", announcementId)
     : await supabase.from("announcements").insert({ ...record, created_by_membership_id: viewer.membershipId!, created_by_user_id: viewer.userId });
   if (result.error) throw new Error("The announcement could not be saved.");
+  schedulePushDispatch();
   revalidatePath("/updates");
 }
 
