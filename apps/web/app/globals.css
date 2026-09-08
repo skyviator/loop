@@ -1,0 +1,45 @@
+@import "tailwindcss";
+@import "@loop/brand/tokens.css";
+
+@theme inline {
+  --color-loop-primary: var(--loop-primary);
+  --color-loop-primary-strong: var(--loop-primary-strong);
+  --color-loop-primary-soft: var(--loop-primary-soft);
+  --color-loop-accent: var(--loop-accent);
+  --color-loop-bg: var(--loop-bg);
+  --color-loop-surface: var(--loop-surface);
+  --color-loop-text: var(--loop-text);
+  --color-loop-text-muted: var(--loop-text-muted);
+  --color-loop-border: var(--loop-border);
+  --font-sans: var(--font-manrope), var(--loop-font-latin);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100svh;
+  margin: 0;
+  background: var(--loop-bg);
+  color: var(--loop-text);
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: var(--loop-primary-soft);
+  color: var(--loop-text);
+}
+

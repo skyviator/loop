@@ -1,0 +1,2 @@
+-- Step 2 intentionally has no persistent demo identities or tenant data.
+-- The pgTAP suite creates isolated fixtures inside a transaction and rolls them back.

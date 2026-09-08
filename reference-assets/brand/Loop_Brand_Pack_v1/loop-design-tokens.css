@@ -1,0 +1,85 @@
+:root {
+  /* Brand */
+  --loop-primary: #2F6F68;
+  --loop-primary-strong: #255C57;
+  --loop-primary-soft: #E7F1EE;
+  --loop-accent: #E3A46D;
+  --loop-accent-soft: #F7E9DB;
+
+  /* Neutral surfaces */
+  --loop-bg: #F7F6F2;
+  --loop-surface: #FFFFFF;
+  --loop-surface-muted: #F1F1ED;
+  --loop-text: #243238;
+  --loop-text-muted: #5F6D73;
+  --loop-border: #DEE3DF;
+  --loop-border-strong: #83918B;
+
+  /* Semantic */
+  --loop-success: #2E6B4F;
+  --loop-warning: #8A651F;
+  --loop-error: #A94747;
+  --loop-info: #3F6F96;
+
+  /* Typography */
+  --loop-font-latin: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --loop-font-sinhala: "Noto Sans Sinhala UI", "Noto Sans Sinhala", sans-serif;
+  --loop-font-tamil: "Noto Sans Tamil UI", "Noto Sans Tamil", sans-serif;
+
+  --loop-text-screen: 1.75rem;   /* 28 */
+  --loop-text-page: 1.5rem;      /* 24 */
+  --loop-text-section: 1.25rem;  /* 20 */
+  --loop-text-subhead: 1.0625rem;/* 17 */
+  --loop-text-body: 1rem;        /* 16 */
+  --loop-text-label: 0.875rem;   /* 14 */
+  --loop-text-meta: 0.8125rem;   /* 13 */
+  --loop-text-micro: 0.75rem;    /* 12 */
+
+  /* Spacing */
+  --loop-space-1: 0.25rem;  /* 4 */
+  --loop-space-2: 0.5rem;   /* 8 */
+  --loop-space-3: 0.75rem;  /* 12 */
+  --loop-space-4: 1rem;     /* 16 */
+  --loop-space-5: 1.25rem;  /* 20 */
+  --loop-space-6: 1.5rem;   /* 24 */
+  --loop-space-8: 2rem;     /* 32 */
+  --loop-space-10: 2.5rem;  /* 40 */
+  --loop-space-12: 3rem;    /* 48 */
+
+  /* Shape */
+  --loop-radius-sm: 8px;
+  --loop-radius-control: 12px;
+  --loop-radius-card: 14px;
+  --loop-radius-pill: 999px;
+
+  /* Sizing */
+  --loop-touch-min: 48px;
+  --loop-control-height: 48px;
+  --loop-screen-padding: 16px;
+
+  /* Motion */
+  --loop-motion-fast: 120ms;
+  --loop-motion-normal: 160ms;
+  --loop-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Focus */
+  --loop-focus-ring: 0 0 0 3px rgba(47, 111, 104, 0.28);
+}
+
+html {
+  font-family: var(--loop-font-latin);
+  background: var(--loop-bg);
+  color: var(--loop-text);
+}
+
+html[lang="si"] { font-family: var(--loop-font-sinhala); }
+html[lang="ta"] { font-family: var(--loop-font-tamil); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

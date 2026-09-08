@@ -1,0 +1,31 @@
+{
+  "name": "loop",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @loop/web dev",
+    "build": "pnpm --filter @loop/web build",
+    "lint": "pnpm --filter @loop/web lint",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "supabase:start": "supabase start --network-id loop-local-network",
+    "supabase:stop": "supabase stop --network-id loop-local-network",
+    "supabase:reset": "supabase db reset --local --network-id loop-local-network",
+    "supabase:test": "supabase test db --local --network-id loop-local-network",
+    "supabase:types": "supabase gen types typescript --local --schema public --network-id loop-local-network > packages/types/src/database.generated.ts"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "26.4.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.4",
+    "supabase": "2.117.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "6.0.3"
+  }
+}

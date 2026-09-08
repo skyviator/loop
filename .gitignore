@@ -1,0 +1,17 @@
+node_modules/
+.pnpm-store/
+.next/
+.turbo/
+.vercel/
+out/
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+supabase/.branches/
+supabase/.temp/
+.DS_Store
+Thumbs.db
