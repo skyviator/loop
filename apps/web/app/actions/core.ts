@@ -181,6 +181,9 @@ export async function setFeatureAction(formData: FormData) {
   const viewer = await requireViewer(["super_admin", "school_admin"]);
   const schoolId = viewer.role === "super_admin" ? uuid(formData.get("school_id"), "School") : viewer.schoolId!;
   const featureKey = requiredText(formData.get("feature_key"), "Feature", 50);
+  if (featureKey === "short_video" && formBoolean(formData.get("enabled"))) {
+    throw new Error("Short video remains disabled until a safe metadata and transcoding pipeline is available.");
+  }
   const { error } = await (await createClient()).from("school_feature_settings").upsert({
     school_id: schoolId, feature_key: featureKey, is_enabled: formBoolean(formData.get("enabled")), configured_by_user_id: viewer.userId,
   });
@@ -193,6 +196,31 @@ export async function setTeacherTimetablePermissionAction(formData: FormData) {
   const { error } = await (await createClient()).from("schools").update({ teachers_can_manage_timetable: formBoolean(formData.get("enabled")) }).eq("id", viewer.schoolId!);
   if (error) throw new Error(error.message);
   revalidatePath("/school");
+}
+
+export async function setCommunicationPermissionsAction(formData: FormData) {
+  const viewer = await requireViewer(["school_admin"]);
+  const { error } = await (await createClient()).from("schools").update({
+    teachers_can_publish_announcements: formBoolean(formData.get("teachers_can_publish_announcements")),
+    teachers_can_manage_calendar: formBoolean(formData.get("teachers_can_manage_calendar")),
+  }).eq("id", viewer.schoolId!);
+  if (error) throw new Error(error.message);
+  revalidatePath("/school");
+  revalidatePath("/updates");
+}
+
+export async function setMediaConsentAction(formData: FormData) {
+  const viewer = await requireViewer(["school_admin"]);
+  const childId = uuid(formData.get("child_id"), "Child");
+  const state = oneOf(formData.get("state"), ["not_recorded", "granted", "denied"] as const, "Media consent");
+  const { error } = await (await createClient()).from("child_media_consents").update({
+    state,
+    changed_by_user_id: viewer.userId,
+    changed_at: new Date().toISOString(),
+  }).eq("school_id", viewer.schoolId!).eq("child_id", childId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/school");
+  revalidatePath("/teacher");
 }
 
 export async function updateSchoolSettingsAction(formData: FormData) {

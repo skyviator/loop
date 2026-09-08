@@ -29,7 +29,7 @@ The pnpm workspace is deliberately small. The current web app is the only runnab
 
 ## Web foundation
 
-The web app uses Next.js App Router, React Server Components, server actions, strict TypeScript, Tailwind CSS, ESLint, and local Manrope via `next/font/local`. Authenticated pages fetch independent RLS-scoped data in parallel on the server and send only rendered role data to small client boundaries. The teacher care panel is the only stateful Step 3B workflow boundary; one server action sends its whole validated class batch to one database RPC. The manifest provides a standalone PWA identity and proportional derivatives of the approved master artwork. A service worker, offline/update lifecycle, Web Push, and caching strategy are explicitly deferred.
+The web app uses Next.js App Router, React Server Components, server actions, strict TypeScript, Tailwind CSS, ESLint, and local Manrope via `next/font/local`. Authenticated pages fetch independent RLS-scoped data in parallel on the server and send only rendered role data to small client boundaries. Stateful client boundaries are limited to bulk care, private photo preparation/upload/viewing, and an open message thread. The manifest provides a standalone PWA identity and proportional derivatives of the approved master artwork. A service worker, offline/update lifecycle, Web Push, and caching strategy are explicitly deferred.
 
 `apps/web/lib/supabase` contains typed browser and server client factories using `@supabase/ssr`. Next.js `proxy.ts` performs Auth claim validation/session cookie refresh when local public environment variables exist; it does not authorize database rows or redirect the Step 1 welcome page. RLS remains the data boundary. Browser code uses only the publishable key.
 
@@ -54,6 +54,14 @@ Copy `apps/web/.env.example` to an ignored `.env.local`, then obtain the local p
 Create each database change with `pnpm exec supabase migration new <name>`. Edit that new migration, run `pnpm supabase:reset`, run `pnpm supabase:test`, then regenerate `packages/types/src/database.generated.ts` with `pnpm supabase:types`.
 
 See `docs/DATABASE.md` for the tenancy, schedule, care, feature, and audit model.
+
+## Private media and communication
+
+Cloudflare R2 stores private photo bytes while PostgreSQL stores authorization metadata and opaque object keys. The browser re-encodes supported photos into three JPEG variants, asks the authenticated server for exact short-lived PUT capabilities, uploads directly to R2, and then asks the server to HEAD-verify and finalize. Reads follow the inverse path: an RLS-authorized variant lookup produces a short-lived exact GET capability and normal media bytes flow directly from R2. Neither path proxies photo bytes through Next.js.
+
+Object keys are generated server-side as `originals/<school UUID>/<asset UUID>/<variant UUID>.jpg`, `display/<school UUID>/<asset UUID>/<variant UUID>.jpg`, and `thumbs/<school UUID>/<asset UUID>/<variant UUID>.jpg`. The first is a sanitized, re-encoded high-quality copy, not untouched camera bytes. Names, emails, captions, and other personal text never enter a key. R2 credentials remain in ignored server-only environment variables. Presigned URLs are bearer capabilities and are never stored in the database or logged. The bucket has no public URL; only `originals/` has the manually configured 30-day lifecycle expiration rule, while `display/` and `thumbs/` retention remains separate.
+
+Messaging uses one guardian-to-school thread per guardian/child pair. PostgreSQL RLS recalculates access from current guardian links, memberships, and classroom assignments. Only the open thread subscribes to a private Supabase Realtime Broadcast topic (`message-thread:<thread UUID>`), authorized through `realtime.messages`; the browser does not subscribe to school-wide messages.
 
 ## Configuration
 

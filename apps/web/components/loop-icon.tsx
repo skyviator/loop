@@ -4,7 +4,7 @@ export type LoopIconName =
   | "activity" | "attendance" | "bottle" | "building" | "calendar" | "check"
   | "chevron" | "child" | "clock" | "home" | "meal" | "mood" | "nappy"
   | "mood-settled" | "mood-happy" | "mood-quiet" | "mood-upset"
-  | "note" | "people" | "rest" | "settings" | "signout" | "toilet" | "water";
+  | "note" | "people" | "photo" | "message" | "announcement" | "rest" | "settings" | "signout" | "toilet" | "water";
 
 const paths: Record<LoopIconName, React.ReactNode> = {
   activity: <><path d="m6 18 4-12 4 12 3-9 2 9"/><path d="M4 18h16"/></>,
@@ -26,6 +26,9 @@ const paths: Record<LoopIconName, React.ReactNode> = {
   nappy: <><path d="M5 7h14l-2 12H7Z"/><path d="m6 10 4 3h4l4-3M8 7V4M16 7V4"/></>,
   note: <><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4M9 12h6M9 16h6"/></>,
   people: <><circle cx="9" cy="9" r="3"/><path d="M3 20c0-4 2-6 6-6s6 2 6 6M16 7c2 0 3 1 3 3s-1 3-3 3M17 15c2.5.4 4 2 4 5"/></>,
+  photo: <><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m4 17 5-4 3 2 3-3 5 5"/></>,
+  message: <><path d="M4 5h16v11H9l-5 4Z"/><path d="M8 9h8M8 12h5"/></>,
+  announcement: <><path d="M4 10v4h4l7 4V6l-7 4Z"/><path d="m18 9 2-2M18 15l2 2"/></>,
   rest: <><path d="M18 15a7 7 0 1 1-9-9 7 7 0 0 0 9 9Z"/><path d="M16 5h4l-4 4h4"/></>,
   settings: <><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/></>,
   signout: <><path d="M14 5H6v14h8M11 12h10M18 9l3 3-3 3"/></>,

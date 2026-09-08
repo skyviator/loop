@@ -67,7 +67,7 @@ insert into public.platform_administrators (user_id)
 values ('90000000-0000-0000-0000-000000000001');
 
 insert into public.plans (id, key, label, max_active_children, max_staff, storage_allowance_bytes)
-values ('30000000-0000-0000-0000-000000000001', 'local_test', 'Local test', 100, 30, 0);
+values ('30000000-0000-0000-0000-000000000001', 'local_test', 'Local test', 100, 30, 104857600);
 
 insert into public.plan_features (plan_id, feature_key, is_allowed)
 select '30000000-0000-0000-0000-000000000001', key, true
@@ -125,7 +125,7 @@ from (values
   ('a0000000-0000-0000-0000-000000000001'::uuid, '10000000-0000-0000-0000-000000000001'::uuid),
   ('b0000000-0000-0000-0000-000000000001'::uuid, '20000000-0000-0000-0000-000000000001'::uuid)
 ) schools(school_id, admin_id)
-cross join (values ('attendance'), ('timetable'), ('meals')) features(feature_key);
+cross join (values ('attendance'), ('timetable'), ('meals'), ('photos'), ('messaging'), ('announcements'), ('calendar')) features(feature_key);
 
 insert into public.timetable_slots (id, school_id, classroom_id, day_of_week, start_time, end_time, title, care_feature_key, created_by_user_id)
 values
@@ -161,14 +161,60 @@ values (
   '10000000-0000-0000-0000-000000000001'
 );
 
+update public.child_media_consents
+set state = 'granted', changed_by_user_id = case school_id
+  when 'a0000000-0000-0000-0000-000000000001' then '10000000-0000-0000-0000-000000000001'::uuid
+  else '20000000-0000-0000-0000-000000000001'::uuid end,
+  changed_at = now();
+
+insert into public.media_upload_reservations (id, school_id, classroom_id, uploader_membership_id, uploader_user_id, status, reserved_bytes, actual_bytes, expires_at, finalized_at)
+values
+  ('a0000000-0000-0000-0000-000000000101', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002', 'ready', 300, 300, now() + interval '1 hour', now()),
+  ('b0000000-0000-0000-0000-000000000101', 'b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000020', 'b0000000-0000-0000-0000-000000000042', '20000000-0000-0000-0000-000000000002', 'ready', 300, 300, now() + interval '1 hour', now());
+
+insert into public.media_assets (id, reservation_id, school_id, classroom_id, uploader_membership_id, uploader_user_id, status, ready_at, total_bytes)
+values
+  ('a0000000-0000-0000-0000-000000000102', 'a0000000-0000-0000-0000-000000000101', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002', 'ready', now(), 300),
+  ('b0000000-0000-0000-0000-000000000102', 'b0000000-0000-0000-0000-000000000101', 'b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000020', 'b0000000-0000-0000-0000-000000000042', '20000000-0000-0000-0000-000000000002', 'ready', now(), 300);
+
+insert into public.media_variants (id, school_id, asset_id, kind, object_key, content_type, byte_size, width, height, status)
+select id, school_id, asset_id, kind::public.media_variant_kind,
+  prefix || '/' || school_id || '/' || asset_id || '/' || id || '.jpg', 'image/jpeg', 100, size, size, 'ready'
+from (values
+  ('a0000000-0000-0000-0000-000000000111'::uuid, 'a0000000-0000-0000-0000-000000000001'::uuid, 'a0000000-0000-0000-0000-000000000102'::uuid, 'original', 'originals', 1000),
+  ('a0000000-0000-0000-0000-000000000112'::uuid, 'a0000000-0000-0000-0000-000000000001'::uuid, 'a0000000-0000-0000-0000-000000000102'::uuid, 'display', 'display', 800),
+  ('a0000000-0000-0000-0000-000000000113'::uuid, 'a0000000-0000-0000-0000-000000000001'::uuid, 'a0000000-0000-0000-0000-000000000102'::uuid, 'thumbnail', 'thumbs', 360),
+  ('b0000000-0000-0000-0000-000000000111'::uuid, 'b0000000-0000-0000-0000-000000000001'::uuid, 'b0000000-0000-0000-0000-000000000102'::uuid, 'original', 'originals', 1000),
+  ('b0000000-0000-0000-0000-000000000112'::uuid, 'b0000000-0000-0000-0000-000000000001'::uuid, 'b0000000-0000-0000-0000-000000000102'::uuid, 'display', 'display', 800),
+  ('b0000000-0000-0000-0000-000000000113'::uuid, 'b0000000-0000-0000-0000-000000000001'::uuid, 'b0000000-0000-0000-0000-000000000102'::uuid, 'thumbnail', 'thumbs', 360)
+) variants(id, school_id, asset_id, kind, prefix, size);
+
+insert into public.media_asset_children (asset_id, child_id, school_id) values
+  ('a0000000-0000-0000-0000-000000000102', 'a0000000-0000-0000-0000-000000000030', 'a0000000-0000-0000-0000-000000000001'),
+  ('b0000000-0000-0000-0000-000000000102', 'b0000000-0000-0000-0000-000000000030', 'b0000000-0000-0000-0000-000000000001');
+
+insert into public.message_threads (id, school_id, child_id, guardian_membership_id) values
+  ('a0000000-0000-0000-0000-000000000120', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000030', 'a0000000-0000-0000-0000-000000000043'),
+  ('b0000000-0000-0000-0000-000000000120', 'b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000030', 'b0000000-0000-0000-0000-000000000043');
+insert into public.messages (id, thread_id, school_id, sender_membership_id, sender_user_id, body) values
+  ('a0000000-0000-0000-0000-000000000121', 'a0000000-0000-0000-0000-000000000120', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002', 'School A message'),
+  ('b0000000-0000-0000-0000-000000000121', 'b0000000-0000-0000-0000-000000000120', 'b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000042', '20000000-0000-0000-0000-000000000002', 'School B message');
+
+insert into public.announcements (id, school_id, target_scope, classroom_id, title, body, status, publish_at, created_by_membership_id, created_by_user_id) values
+  ('a0000000-0000-0000-0000-000000000130', 'a0000000-0000-0000-0000-000000000001', 'classroom', 'a0000000-0000-0000-0000-000000000020', 'A notice', 'For School A', 'published', now() - interval '1 minute', 'a0000000-0000-0000-0000-000000000041', '10000000-0000-0000-0000-000000000001'),
+  ('b0000000-0000-0000-0000-000000000130', 'b0000000-0000-0000-0000-000000000001', 'classroom', 'b0000000-0000-0000-0000-000000000020', 'B notice', 'For School B', 'published', now() - interval '1 minute', 'b0000000-0000-0000-0000-000000000041', '20000000-0000-0000-0000-000000000001');
+insert into public.calendar_events (id, school_id, target_scope, title, starts_at, ends_at, created_by_membership_id, created_by_user_id) values
+  ('a0000000-0000-0000-0000-000000000140', 'a0000000-0000-0000-0000-000000000001', 'school', 'A event', now() + interval '1 day', now() + interval '1 day 1 hour', 'a0000000-0000-0000-0000-000000000041', '10000000-0000-0000-0000-000000000001'),
+  ('b0000000-0000-0000-0000-000000000140', 'b0000000-0000-0000-0000-000000000001', 'school', 'B event', now() + interval '1 day', now() + interval '1 day 1 hour', 'b0000000-0000-0000-0000-000000000041', '20000000-0000-0000-0000-000000000001');
+
 select extensions.is(
   (select count(*)::integer from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r'),
-  20,
-  'exactly 20 public application tables exist'
+  31,
+  'exactly 31 public application tables exist'
 );
 select extensions.is(
   (select count(*)::integer from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity),
-  20,
+  31,
   'RLS is enabled on every public application table'
 );
 
@@ -457,6 +503,140 @@ select extensions.lives_ok(
 select extensions.lives_ok(
   $$update public.schools set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000001'$$,
   'platform admin can change a school status'
+);
+reset role;
+
+-- Step 4: private photo metadata and communication remain relationship scoped.
+update public.schools set status = 'active' where id = 'a0000000-0000-0000-0000-000000000001';
+
+set local role anon;
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('request.jwt.claim.role', 'anon', true);
+select pg_temp.throws_any('select * from public.media_assets', 'anonymous cannot inspect private media metadata');
+select pg_temp.throws_any('select * from public.messages', 'anonymous cannot inspect private messages');
+select pg_temp.throws_any('select * from public.announcements', 'anonymous cannot inspect school announcements');
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.media_assets), 1, 'assigned teacher sees only assigned School A media');
+select extensions.is((select count(*)::integer from public.messages), 1, 'assigned teacher sees only the assigned child thread');
+select extensions.is((select count(*)::integer from public.announcements), 1, 'assigned teacher sees only the relevant announcement');
+select extensions.is((select count(*)::integer from public.calendar_events), 1, 'assigned teacher sees only the relevant calendar');
+select extensions.lives_ok(
+  $$insert into public.messages (thread_id, school_id, sender_membership_id, sender_user_id, body)
+    values ('a0000000-0000-0000-0000-000000000120', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002', 'Teacher reply')$$,
+  'assigned teacher can reply in the guardian-specific thread'
+);
+select pg_temp.throws_any(
+  $$insert into public.messages (thread_id, school_id, sender_membership_id, sender_user_id, body)
+    values ('b0000000-0000-0000-0000-000000000120', 'b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002', 'Cross tenant')$$,
+  'teacher cannot send into another school thread'
+);
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000004', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.media_assets), 0, 'unassigned teacher sees no child media');
+select extensions.is((select count(*)::integer from public.message_threads), 0, 'unassigned teacher sees no guardian threads');
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.media_assets), 1, 'guardian sees media tagged to the linked child only');
+select extensions.is((select count(*)::integer from public.message_threads), 1, 'guardian sees only their own linked-child thread');
+select extensions.is((select count(*)::integer from public.announcements), 1, 'guardian sees the relevant classroom announcement only');
+select extensions.is((select count(*)::integer from public.calendar_events), 1, 'guardian sees the relevant school calendar only');
+select extensions.lives_ok(
+  $$insert into public.messages (thread_id, school_id, sender_membership_id, sender_user_id, body)
+    values ('a0000000-0000-0000-0000-000000000120', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000043', '10000000-0000-0000-0000-000000000003', 'Guardian reply')$$,
+  'guardian can reply only in their guardian-specific thread'
+);
+reset role;
+
+select set_config('request.jwt.claim.sub', '90000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.media_assets), 0, 'platform admin has no child-media bypass');
+select extensions.is((select count(*)::integer from public.messages), 0, 'platform admin has no message bypass');
+reset role;
+
+select extensions.is(
+  (select count(*)::integer from pg_policies where schemaname = 'realtime' and tablename = 'messages' and policyname = 'message_thread_broadcast_select'),
+  1,
+  'private message Broadcast has an explicit realtime authorization policy'
+);
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$update public.announcements set created_by_user_id = '10000000-0000-0000-0000-000000000002' where id = 'a0000000-0000-0000-0000-000000000130'$$,
+  'announcement creator attribution is immutable even to a school admin'
+);
+select pg_temp.throws_any(
+  $$update public.calendar_events set created_by_membership_id = 'a0000000-0000-0000-0000-000000000042' where id = 'a0000000-0000-0000-0000-000000000140'$$,
+  'calendar creator attribution is immutable even to a school admin'
+);
+reset role;
+
+-- Consent is conservative: not-recorded and denied both prevent reservations.
+update public.child_media_consents set state = 'not_recorded', changed_by_user_id = null, changed_at = now()
+where child_id = 'a0000000-0000-0000-0000-000000000030';
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.reserve_photo_upload(
+    'a0000000-0000-0000-0000-000000000020', array['a0000000-0000-0000-0000-000000000030'::uuid],
+    '[{"kind":"original","content_type":"image/jpeg","byte_size":2000,"width":1200,"height":800},{"kind":"display","content_type":"image/jpeg","byte_size":1500,"width":1000,"height":667},{"kind":"thumbnail","content_type":"image/jpeg","byte_size":500,"width":360,"height":240}]'::jsonb,
+    null, now())$$,
+  'not-recorded consent blocks a teacher photo reservation'
+);
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok(
+  $$update public.child_media_consents set state = 'granted', changed_by_user_id = '10000000-0000-0000-0000-000000000001', changed_at = now()
+    where child_id = 'a0000000-0000-0000-0000-000000000030'$$,
+  'school admin can record granted media consent'
+);
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select extensions.lives_ok(
+  $$select public.reserve_photo_upload(
+    'a0000000-0000-0000-0000-000000000020', array['a0000000-0000-0000-0000-000000000030'::uuid],
+    '[{"kind":"original","content_type":"image/jpeg","byte_size":2000,"width":1200,"height":800},{"kind":"display","content_type":"image/jpeg","byte_size":1500,"width":1000,"height":667},{"kind":"thumbnail","content_type":"image/jpeg","byte_size":500,"width":360,"height":240}]'::jsonb,
+    'Class activity', now())$$,
+  'assigned teacher can reserve a bounded photo after consent is granted'
+);
+select extensions.is(
+  (select reserved_bytes::integer from public.media_upload_reservations where uploader_user_id = '10000000-0000-0000-0000-000000000002' and status = 'reserved'),
+  4000,
+  'photo reservation records exact quota bytes transactionally'
+);
+select pg_temp.throws_any(
+  $$select public.reserve_photo_upload(
+    'a0000000-0000-0000-0000-000000000020', array['b0000000-0000-0000-0000-000000000030'::uuid],
+    '[{"kind":"original","content_type":"image/jpeg","byte_size":2000,"width":1200,"height":800},{"kind":"display","content_type":"image/jpeg","byte_size":1500,"width":1000,"height":667},{"kind":"thumbnail","content_type":"image/jpeg","byte_size":500,"width":360,"height":240}]'::jsonb,
+    null, now())$$,
+  'photo reservation rejects a cross-tenant child tag'
+);
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+update public.child_media_consents set state = 'denied', changed_by_user_id = '10000000-0000-0000-0000-000000000001', changed_at = now()
+where child_id = 'a0000000-0000-0000-0000-000000000030';
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.reserve_photo_upload(
+    'a0000000-0000-0000-0000-000000000020', array['a0000000-0000-0000-0000-000000000030'::uuid],
+    '[{"kind":"original","content_type":"image/jpeg","byte_size":2000,"width":1200,"height":800},{"kind":"display","content_type":"image/jpeg","byte_size":1500,"width":1000,"height":667},{"kind":"thumbnail","content_type":"image/jpeg","byte_size":500,"width":360,"height":240}]'::jsonb,
+    null, now())$$,
+  'denied consent blocks a teacher photo reservation'
 );
 reset role;
 

@@ -13,6 +13,7 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "test:e2e": "playwright test",
+    "test:r2": "pnpm --filter @loop/web test:r2",
     "seed:local": "pnpm --filter @loop/web seed:local",
     "supabase:start": "supabase start --network-id loop-local-network",
     "supabase:stop": "supabase stop --network-id loop-local-network",

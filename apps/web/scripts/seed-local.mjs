@@ -78,7 +78,7 @@ await result(
     label: "Local Core",
     max_active_children: 40,
     max_staff: 12,
-    storage_allowance_bytes: 0,
+    storage_allowance_bytes: 1_073_741_824,
   }),
   "Create plan",
 );
@@ -152,7 +152,7 @@ await result(
   "Link guardian",
 );
 
-const enabledFeatureKeys = ["attendance", "timetable", "meals", "bottle", "water", "sleep", "toilet", "nappy", "mood", "activities", "notes"];
+const enabledFeatureKeys = ["attendance", "timetable", "meals", "bottle", "water", "sleep", "toilet", "nappy", "mood", "activities", "notes", "photos", "messaging", "announcements", "calendar"];
 await result(
   admin.from("school_feature_settings").insert(enabledFeatureKeys.map((feature_key) => ({
     school_id: schoolId,
@@ -162,6 +162,51 @@ await result(
   }))),
   "Enable core features",
 );
+await result(
+  admin.from("child_media_consents").upsert(children.map((child, index) => ({
+    child_id: child.id,
+    school_id: schoolId,
+    state: index < 10 ? "granted" : index < 13 ? "denied" : "not_recorded",
+    changed_by_user_id: byRole.school_admin.id,
+    changed_at: new Date().toISOString(),
+  }))),
+  "Record fictional media consent",
+);
+
+const messageThreadId = id();
+await result(admin.from("message_threads").insert({
+  id: messageThreadId,
+  school_id: schoolId,
+  child_id: children[0].id,
+  guardian_membership_id: guardianMembershipId,
+}), "Create guardian conversation");
+await result(admin.from("messages").insert([
+  { thread_id: messageThreadId, school_id: schoolId, sender_membership_id: teacherMembershipId, sender_user_id: byRole.teacher.id, body: "Maya settled in well this morning." },
+  { thread_id: messageThreadId, school_id: schoolId, sender_membership_id: guardianMembershipId, sender_user_id: byRole.guardian.id, body: "Thank you for the update." },
+]), "Create messages");
+
+await result(admin.from("announcements").insert({
+  school_id: schoolId,
+  target_scope: "school",
+  title: "Family morning this Friday",
+  body: "Please arrive by 8:45 am. The programme begins at 9:00 am.",
+  priority: "important",
+  status: "published",
+  publish_at: new Date().toISOString(),
+  created_by_membership_id: adminMembershipId,
+  created_by_user_id: byRole.school_admin.id,
+}), "Create announcement");
+
+await result(admin.from("calendar_events").insert({
+  school_id: schoolId,
+  target_scope: "school",
+  title: "Family morning",
+  description: "Families are welcome for a short classroom morning.",
+  starts_at: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+  ends_at: new Date(Date.now() + 3 * 86_400_000 + 90 * 60_000).toISOString(),
+  created_by_membership_id: adminMembershipId,
+  created_by_user_id: byRole.school_admin.id,
+}), "Create calendar event");
 
 const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Colombo" }).format(new Date());
 const weekday = new Date(`${today}T00:00:00+05:30`).getUTCDay() || 7;

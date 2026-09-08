@@ -1,6 +1,6 @@
-# Step 3 concept-to-implementation review
+# Step 4 concept-to-implementation review
 
-The retained concepts and final browser captures were inspected side by side after the Step 3B four-role browser pass.
+The retained concepts and final browser captures are inspected side by side after each complete four-role browser pass.
 
 1. **Palette and type:** the implementation matches the warm background, evergreen hierarchy, muted secondary copy, warm invitation action, and local Manrope direction.
 2. **Parent hierarchy:** Child -> Today, child switching, chronological spine, time labels, and distinct now/confirmed/ended-without-update states match the concept. The real screen omits the concept's deferred Messages/Updates navigation.
@@ -10,5 +10,10 @@ The retained concepts and final browser captures were inspected side by side aft
 6. **Brand assets and icons:** generated concepts used blank logo areas and icon placeholders. Production uses the untouched approved Loop logo plus deterministic rounded-stroke `currentColor` SVG icons.
 7. **Density and decoration:** final screens rely on type, borders, and whitespace. They avoid gradients, glass, illustration, emoji, colored icon tiles, and card-per-row styling as specified.
 8. **Responsive behavior:** mobile captures retain 48px common controls and a bottom role navigation; desktop captures retain a fixed side navigation. The browser suite checks 390px mobile and 1440px desktop renders plus a 200% root text-size overflow assertion. That assertion exposed and drove a Step 3B fix to wrap the teacher hero and stack Now/Next on narrow screens.
+9. **Private media placement:** the parent capture keeps Child -> Today as the primary hierarchy and adds a small "Photos today" strip immediately before the chronological day, rather than introducing a social feed or separate public gallery. Two generated, non-personal thumbnail fixtures confirm the two-column mobile treatment.
+10. **Teacher photo workflow:** the teacher capture keeps attendance and few-tap care ahead of media, then presents one compact picker, a consent-policy reminder, shared child tags, caption, and one primary action. Consent-blocked children stay in a collapsed explanatory disclosure and are never silently selected.
+11. **Communication hierarchy:** the desktop admin capture uses the existing evergreen sidebar and a simple two-column announcements/upcoming agenda composition. Importance has both text and the warm rule; edit/create controls remain progressive disclosures instead of persistent dense forms.
+12. **Density and continuity:** photo thumbnails reuse the established surface, border, radius, and type tokens. Messages, Updates, and Calendar extend the existing navigation with the same deterministic stroke icons; no emoji, gradients, glass, colored icon tiles, or Instagram-like interaction language appeared.
+13. **Responsive evidence:** the final Step 4 render was checked at 390x844 for teacher and guardian and at 1440x900 for school admin. Child switching remains horizontally scrollable without widening the document, photo grids stay within the viewport, and the long teacher workflow preserves readable full-width controls.
 
-The accepted implementation keeps the same five decisive concept relationships: warm off-white/evergreen palette, Child -> Today parent hierarchy, classroom-first teacher hierarchy, content-first editable admin workspaces, and an explicit child-blind platform boundary. The final screenshots were visually inspected after the passing browser run; no gradient, glassmorphism, emoji, child media, or unapproved logo treatment was introduced.
+The accepted implementation keeps the same five decisive concept relationships: warm off-white/evergreen palette, Child -> Today parent hierarchy, classroom-first teacher hierarchy, content-first editable admin workspaces, and an explicit child-blind platform boundary. The Step 4 screenshots were visually inspected after the passing browser run; private media and communication extend those relationships without changing the approved logo or adding generic social-media styling.

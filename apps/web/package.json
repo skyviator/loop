@@ -8,9 +8,13 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "seed:local": "node scripts/seed-local.mjs"
+    "test": "vitest run lib",
+    "seed:local": "node scripts/seed-local.mjs",
+    "test:r2": "node --env-file=.env.local scripts/verify-r2.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1127.0",
+    "@aws-sdk/s3-request-presigner": "3.1127.0",
     "@loop/brand": "workspace:*",
     "@loop/domain": "workspace:*",
     "@loop/types": "workspace:*",

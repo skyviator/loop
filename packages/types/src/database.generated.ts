@@ -9,6 +9,89 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      announcements: {
+        Row: {
+          body: string
+          branch_id: string | null
+          classroom_id: string | null
+          created_at: string
+          created_by_membership_id: string
+          created_by_user_id: string
+          expires_at: string | null
+          id: string
+          priority: Database["public"]["Enums"]["announcement_priority"]
+          publish_at: string | null
+          school_id: string
+          status: Database["public"]["Enums"]["publication_status"]
+          target_scope: Database["public"]["Enums"]["communication_target_scope"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          branch_id?: string | null
+          classroom_id?: string | null
+          created_at?: string
+          created_by_membership_id: string
+          created_by_user_id: string
+          expires_at?: string | null
+          id?: string
+          priority?: Database["public"]["Enums"]["announcement_priority"]
+          publish_at?: string | null
+          school_id: string
+          status?: Database["public"]["Enums"]["publication_status"]
+          target_scope: Database["public"]["Enums"]["communication_target_scope"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          branch_id?: string | null
+          classroom_id?: string | null
+          created_at?: string
+          created_by_membership_id?: string
+          created_by_user_id?: string
+          expires_at?: string | null
+          id?: string
+          priority?: Database["public"]["Enums"]["announcement_priority"]
+          publish_at?: string | null
+          school_id?: string
+          status?: Database["public"]["Enums"]["publication_status"]
+          target_scope?: Database["public"]["Enums"]["communication_target_scope"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "announcements_branch_id_school_id_fkey"
+            columns: ["branch_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "announcements_classroom_id_school_id_fkey"
+            columns: ["classroom_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "classrooms"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "announcements_created_by_membership_id_school_id_fkey"
+            columns: ["created_by_membership_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "school_memberships"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "announcements_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       attendance_records: {
         Row: {
           checked_in_at: string | null
@@ -168,6 +251,92 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "branches_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calendar_events: {
+        Row: {
+          all_day: boolean
+          branch_id: string | null
+          classroom_id: string | null
+          created_at: string
+          created_by_membership_id: string
+          created_by_user_id: string
+          description: string | null
+          ends_at: string
+          id: string
+          location: string | null
+          school_id: string
+          starts_at: string
+          status: Database["public"]["Enums"]["record_status"]
+          target_scope: Database["public"]["Enums"]["communication_target_scope"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          all_day?: boolean
+          branch_id?: string | null
+          classroom_id?: string | null
+          created_at?: string
+          created_by_membership_id: string
+          created_by_user_id: string
+          description?: string | null
+          ends_at: string
+          id?: string
+          location?: string | null
+          school_id: string
+          starts_at: string
+          status?: Database["public"]["Enums"]["record_status"]
+          target_scope: Database["public"]["Enums"]["communication_target_scope"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          all_day?: boolean
+          branch_id?: string | null
+          classroom_id?: string | null
+          created_at?: string
+          created_by_membership_id?: string
+          created_by_user_id?: string
+          description?: string | null
+          ends_at?: string
+          id?: string
+          location?: string | null
+          school_id?: string
+          starts_at?: string
+          status?: Database["public"]["Enums"]["record_status"]
+          target_scope?: Database["public"]["Enums"]["communication_target_scope"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_events_branch_id_school_id_fkey"
+            columns: ["branch_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "calendar_events_classroom_id_school_id_fkey"
+            columns: ["classroom_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "classrooms"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "calendar_events_created_by_membership_id_school_id_fkey"
+            columns: ["created_by_membership_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "school_memberships"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "calendar_events_school_id_fkey"
             columns: ["school_id"]
             isOneToOne: false
             referencedRelation: "schools"
@@ -409,6 +578,44 @@ export type Database = {
           },
         ]
       }
+      child_media_consents: {
+        Row: {
+          changed_at: string
+          changed_by_user_id: string | null
+          child_id: string
+          created_at: string
+          school_id: string
+          state: Database["public"]["Enums"]["media_consent_state"]
+          updated_at: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by_user_id?: string | null
+          child_id: string
+          created_at?: string
+          school_id: string
+          state?: Database["public"]["Enums"]["media_consent_state"]
+          updated_at?: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by_user_id?: string | null
+          child_id?: string
+          created_at?: string
+          school_id?: string
+          state?: Database["public"]["Enums"]["media_consent_state"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_media_consents_child_id_school_id_fkey"
+            columns: ["child_id", "school_id"]
+            isOneToOne: true
+            referencedRelation: "children"
+            referencedColumns: ["id", "school_id"]
+          },
+        ]
+      }
       children: {
         Row: {
           created_at: string
@@ -636,6 +843,382 @@ export type Database = {
           },
         ]
       }
+      media_asset_children: {
+        Row: {
+          asset_id: string
+          child_id: string
+          created_at: string
+          school_id: string
+        }
+        Insert: {
+          asset_id: string
+          child_id: string
+          created_at?: string
+          school_id: string
+        }
+        Update: {
+          asset_id?: string
+          child_id?: string
+          created_at?: string
+          school_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_asset_children_asset_id_school_id_fkey"
+            columns: ["asset_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "media_assets"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "media_asset_children_child_id_school_id_fkey"
+            columns: ["child_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "school_id"]
+          },
+        ]
+      }
+      media_assets: {
+        Row: {
+          caption: string | null
+          captured_at: string | null
+          classroom_id: string
+          created_at: string
+          id: string
+          ready_at: string | null
+          reservation_id: string
+          school_id: string
+          status: Database["public"]["Enums"]["media_asset_status"]
+          total_bytes: number | null
+          updated_at: string
+          uploader_membership_id: string
+          uploader_user_id: string
+        }
+        Insert: {
+          caption?: string | null
+          captured_at?: string | null
+          classroom_id: string
+          created_at?: string
+          id?: string
+          ready_at?: string | null
+          reservation_id: string
+          school_id: string
+          status?: Database["public"]["Enums"]["media_asset_status"]
+          total_bytes?: number | null
+          updated_at?: string
+          uploader_membership_id: string
+          uploader_user_id: string
+        }
+        Update: {
+          caption?: string | null
+          captured_at?: string | null
+          classroom_id?: string
+          created_at?: string
+          id?: string
+          ready_at?: string | null
+          reservation_id?: string
+          school_id?: string
+          status?: Database["public"]["Enums"]["media_asset_status"]
+          total_bytes?: number | null
+          updated_at?: string
+          uploader_membership_id?: string
+          uploader_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_assets_classroom_id_school_id_fkey"
+            columns: ["classroom_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "classrooms"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "media_assets_reservation_id_school_id_fkey"
+            columns: ["reservation_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "media_upload_reservations"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "media_assets_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "media_assets_uploader_membership_id_school_id_fkey"
+            columns: ["uploader_membership_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "school_memberships"
+            referencedColumns: ["id", "school_id"]
+          },
+        ]
+      }
+      media_upload_reservations: {
+        Row: {
+          actual_bytes: number | null
+          classroom_id: string
+          created_at: string
+          expires_at: string
+          finalized_at: string | null
+          id: string
+          reserved_bytes: number
+          school_id: string
+          status: Database["public"]["Enums"]["media_upload_status"]
+          updated_at: string
+          uploader_membership_id: string
+          uploader_user_id: string
+        }
+        Insert: {
+          actual_bytes?: number | null
+          classroom_id: string
+          created_at?: string
+          expires_at: string
+          finalized_at?: string | null
+          id?: string
+          reserved_bytes: number
+          school_id: string
+          status?: Database["public"]["Enums"]["media_upload_status"]
+          updated_at?: string
+          uploader_membership_id: string
+          uploader_user_id: string
+        }
+        Update: {
+          actual_bytes?: number | null
+          classroom_id?: string
+          created_at?: string
+          expires_at?: string
+          finalized_at?: string | null
+          id?: string
+          reserved_bytes?: number
+          school_id?: string
+          status?: Database["public"]["Enums"]["media_upload_status"]
+          updated_at?: string
+          uploader_membership_id?: string
+          uploader_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_upload_reservations_classroom_id_school_id_fkey"
+            columns: ["classroom_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "classrooms"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "media_upload_reservations_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "media_upload_reservations_uploader_membership_id_school_id_fkey"
+            columns: ["uploader_membership_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "school_memberships"
+            referencedColumns: ["id", "school_id"]
+          },
+        ]
+      }
+      media_variants: {
+        Row: {
+          asset_id: string
+          byte_size: number
+          content_type: string
+          created_at: string
+          height: number
+          id: string
+          kind: Database["public"]["Enums"]["media_variant_kind"]
+          object_key: string
+          school_id: string
+          status: Database["public"]["Enums"]["media_asset_status"]
+          updated_at: string
+          width: number
+        }
+        Insert: {
+          asset_id: string
+          byte_size: number
+          content_type: string
+          created_at?: string
+          height: number
+          id?: string
+          kind: Database["public"]["Enums"]["media_variant_kind"]
+          object_key: string
+          school_id: string
+          status?: Database["public"]["Enums"]["media_asset_status"]
+          updated_at?: string
+          width: number
+        }
+        Update: {
+          asset_id?: string
+          byte_size?: number
+          content_type?: string
+          created_at?: string
+          height?: number
+          id?: string
+          kind?: Database["public"]["Enums"]["media_variant_kind"]
+          object_key?: string
+          school_id?: string
+          status?: Database["public"]["Enums"]["media_asset_status"]
+          updated_at?: string
+          width?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_variants_asset_id_school_id_fkey"
+            columns: ["asset_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "media_assets"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "media_variants_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_thread_reads: {
+        Row: {
+          last_read_at: string
+          membership_id: string
+          school_id: string
+          thread_id: string
+          updated_at: string
+        }
+        Insert: {
+          last_read_at?: string
+          membership_id: string
+          school_id: string
+          thread_id: string
+          updated_at?: string
+        }
+        Update: {
+          last_read_at?: string
+          membership_id?: string
+          school_id?: string
+          thread_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_thread_reads_membership_id_school_id_fkey"
+            columns: ["membership_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "school_memberships"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "message_thread_reads_thread_id_school_id_fkey"
+            columns: ["thread_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "message_threads"
+            referencedColumns: ["id", "school_id"]
+          },
+        ]
+      }
+      message_threads: {
+        Row: {
+          child_id: string
+          created_at: string
+          guardian_membership_id: string
+          id: string
+          school_id: string
+          status: Database["public"]["Enums"]["record_status"]
+          updated_at: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          guardian_membership_id: string
+          id?: string
+          school_id: string
+          status?: Database["public"]["Enums"]["record_status"]
+          updated_at?: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          guardian_membership_id?: string
+          id?: string
+          school_id?: string
+          status?: Database["public"]["Enums"]["record_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_threads_child_id_school_id_fkey"
+            columns: ["child_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "message_threads_guardian_membership_id_school_id_fkey"
+            columns: ["guardian_membership_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "school_memberships"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "message_threads_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          school_id: string
+          sender_membership_id: string
+          sender_user_id: string
+          thread_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          school_id: string
+          sender_membership_id: string
+          sender_user_id: string
+          thread_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          school_id?: string
+          sender_membership_id?: string
+          sender_user_id?: string
+          thread_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_sender_membership_id_school_id_fkey"
+            columns: ["sender_membership_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "school_memberships"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "messages_thread_id_school_id_fkey"
+            columns: ["thread_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "message_threads"
+            referencedColumns: ["id", "school_id"]
+          },
+        ]
+      }
       plan_features: {
         Row: {
           created_at: string
@@ -833,6 +1416,35 @@ export type Database = {
           },
         ]
       }
+      school_storage_usage: {
+        Row: {
+          reserved_bytes: number
+          school_id: string
+          updated_at: string
+          used_bytes: number
+        }
+        Insert: {
+          reserved_bytes?: number
+          school_id: string
+          updated_at?: string
+          used_bytes?: number
+        }
+        Update: {
+          reserved_bytes?: number
+          school_id?: string
+          updated_at?: string
+          used_bytes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "school_storage_usage_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: true
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       schools: {
         Row: {
           created_at: string
@@ -841,7 +1453,9 @@ export type Database = {
           plan_id: string
           slug: string
           status: Database["public"]["Enums"]["record_status"]
+          teachers_can_manage_calendar: boolean
           teachers_can_manage_timetable: boolean
+          teachers_can_publish_announcements: boolean
           timezone: string
           updated_at: string
         }
@@ -852,7 +1466,9 @@ export type Database = {
           plan_id: string
           slug: string
           status?: Database["public"]["Enums"]["record_status"]
+          teachers_can_manage_calendar?: boolean
           teachers_can_manage_timetable?: boolean
+          teachers_can_publish_announcements?: boolean
           timezone?: string
           updated_at?: string
         }
@@ -863,7 +1479,9 @@ export type Database = {
           plan_id?: string
           slug?: string
           status?: Database["public"]["Enums"]["record_status"]
+          teachers_can_manage_calendar?: boolean
           teachers_can_manage_timetable?: boolean
+          teachers_can_publish_announcements?: boolean
           timezone?: string
           updated_at?: string
         }
@@ -1053,6 +1671,14 @@ export type Database = {
         Args: { sleep_event_ids: string[]; target_classroom_id: string }
         Returns: number
       }
+      fail_photo_upload: {
+        Args: { target_reservation_id: string }
+        Returns: undefined
+      }
+      finalize_photo_upload: {
+        Args: { actual_manifest: Json; target_reservation_id: string }
+        Returns: string
+      }
       move_child_enrollment: {
         Args: {
           move_date: string
@@ -1073,8 +1699,19 @@ export type Database = {
         Returns: number
       }
       redeem_invitation: { Args: { invitation_token: string }; Returns: string }
+      reserve_photo_upload: {
+        Args: {
+          photo_caption?: string
+          photo_captured_at?: string
+          target_child_ids: string[]
+          target_classroom_id: string
+          variant_manifest: Json
+        }
+        Returns: Json
+      }
     }
     Enums: {
+      announcement_priority: "normal" | "important"
       attendance_status: "expected" | "present" | "absent" | "excused"
       care_category:
         | "meal"
@@ -1087,6 +1724,7 @@ export type Database = {
         | "activity"
         | "note"
       care_event_status: "recorded" | "corrected" | "voided"
+      communication_target_scope: "school" | "branch" | "classroom"
       enrollment_status: "planned" | "active" | "completed" | "cancelled"
       feature_category: "core" | "care" | "communication" | "media"
       invitation_status: "pending" | "accepted" | "revoked" | "expired"
@@ -1096,6 +1734,11 @@ export type Database = {
         | "ate_some"
         | "ate_little"
         | "none_refused"
+      media_asset_status: "pending" | "ready" | "failed" | "deleted"
+      media_consent_state: "not_recorded" | "granted" | "denied"
+      media_upload_status: "reserved" | "ready" | "failed" | "expired"
+      media_variant_kind: "original" | "display" | "thumbnail"
+      publication_status: "draft" | "published" | "archived"
       record_status: "active" | "inactive" | "archived"
       school_role: "school_admin" | "teacher" | "guardian"
       timetable_exception_kind:
@@ -1230,6 +1873,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      announcement_priority: ["normal", "important"],
       attendance_status: ["expected", "present", "absent", "excused"],
       care_category: [
         "meal",
@@ -1243,6 +1887,7 @@ export const Constants = {
         "note",
       ],
       care_event_status: ["recorded", "corrected", "voided"],
+      communication_target_scope: ["school", "branch", "classroom"],
       enrollment_status: ["planned", "active", "completed", "cancelled"],
       feature_category: ["core", "care", "communication", "media"],
       invitation_status: ["pending", "accepted", "revoked", "expired"],
@@ -1253,6 +1898,11 @@ export const Constants = {
         "ate_little",
         "none_refused",
       ],
+      media_asset_status: ["pending", "ready", "failed", "deleted"],
+      media_consent_state: ["not_recorded", "granted", "denied"],
+      media_upload_status: ["reserved", "ready", "failed", "expired"],
+      media_variant_kind: ["original", "display", "thumbnail"],
+      publication_status: ["draft", "published", "archived"],
       record_status: ["active", "inactive", "archived"],
       school_role: ["school_admin", "teacher", "guardian"],
       timetable_exception_kind: [

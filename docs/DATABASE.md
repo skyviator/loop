@@ -40,9 +40,25 @@ Sleep start is a care batch with `started_at`; a partial unique index prevents a
 
 Timetable display state is derived from an injected clock, the school IANA timezone, attendance, exceptions, and explicit care confirmation. Time passing produces `ended_unconfirmed`, never `confirmed`; absence produces `absent`, never completion.
 
+## Step 4 private media
+
+`child_media_consents` records `not_recorded`, `granted`, or `denied`, plus who and when changed the state. This is a technical record of a school's approved process, not a legal determination. Both `not_recorded` and `denied` block child tagging and reservation creation. Teachers can read only consent relevant to children they may access; school administrators record changes.
+
+`media_upload_reservations`, `media_assets`, `media_variants`, and `media_asset_children` separate transactional authorization metadata from private R2 bytes. A security-invoker reservation RPC locks the school's `school_storage_usage` row, validates effective feature access, current assignment, every child/enrollment and consent state, exact JPEG variant limits, then reserves expected bytes. Finalization is service-only after R2 HEAD checks and atomically replaces reserved bytes with actual ready bytes. Failed verification releases the reservation and marks metadata failed. No request scans the bucket.
+
+Abandoned reservations expire after 10 minutes but their eventual cleanup is deferred until Loop has a scheduled-job environment. A future cleanup job must delete any objects for expired `reserved` rows, call the failure/release operation, and remain idempotent.
+
+High-quality, display, and thumbnail keys use separate global prefixes: `originals/<school UUID>/<asset UUID>/<variant UUID>.jpg`, `display/<school UUID>/<asset UUID>/<variant UUID>.jpg`, and `thumbs/<school UUID>/<asset UUID>/<variant UUID>.jpg`. The `originals/` object is a sanitized, browser-decoded, re-encoded high-quality copy; it is not the untouched camera source. The owner manually configured an R2 object lifecycle rule scoped only to `originals/` that expires objects after 30 days. `display/` and `thumbs/` remain outside that rule and have separate retention.
+
+## Step 4 communication
+
+`message_threads` identifies one guardian/child school conversation; `messages` stores text and sender identity, and `message_thread_reads` stores one read cursor per participating membership. RLS grants the named guardian, active school administrators, and active teachers currently assigned to the child's classroom. Assignment, guardian-link, membership, feature, and tenant changes are evaluated on every access, so revocation does not depend on cached thread membership.
+
+`announcements` and `calendar_events` have normalized school, branch, or classroom targets. RLS filters guardian and teacher reads to current linked/assigned contexts, while mutations combine the feature gate, tenant target validation, administrator role, and the two default-off teacher permission settings. Times are stored as instants and form input is interpreted in the school's IANA timezone.
+
 ## Deferred
 
-No cloud project, billing, storage/media, messaging, push, production email delivery, or deployment is included in Step 3.
+No cloud Supabase project, billing, push, production email delivery, external calendar sync, attachments, or deployment is included in Step 4. Short video remains disabled because browser-only handling cannot provide a dependable cross-platform metadata-removal and transcoding pipeline; a later native media or Cloudflare Stream design is required.
 
 ## Local Docker network
 

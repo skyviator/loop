@@ -4,8 +4,8 @@ Loop is a privacy-sensitive, multi-tenant nursery/preschool parent communication
 
 ## Current boundary
 
-- Step 3 adds the local core application experience: cookie-based sign-in/recovery, role routing, editable platform and school setup, teacher Classroom Today, guardian Child -> Today, recurring timetables/exceptions, attendance, atomic bulk care for all nine core care modules, sleep start/end, a 15-child fictional local seed, and database-enforced plan limits.
-- Do not link or deploy a Supabase project, create cloud credentials, or add storage/media, messaging, push, billing, payments, or production email delivery without an explicit later step.
+- Step 4 adds private photo handling through a private Cloudflare R2 bucket, consent and quota enforcement, child-contextual messaging, targeted announcements and calendar events, and private per-thread Realtime on top of the completed local core application experience.
+- Supabase remains local. Do not link or deploy a cloud Supabase project, deploy Loop, connect Vercel or GitHub, or add push, billing, payments, production email delivery, attachments, or short video without an explicit later step.
 - Use pnpm from the repository root. App checks are `pnpm lint`, `pnpm typecheck`, `pnpm build`; local database commands are `pnpm supabase:start`, `pnpm supabase:stop`, `pnpm supabase:reset`, `pnpm supabase:test`, and `pnpm supabase:types`.
 - Create schema changes with a new migration. Never hand-edit generated database types; regenerate them from the local database after a successful reset.
 
