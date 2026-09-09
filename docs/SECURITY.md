@@ -63,6 +63,8 @@ The R2 browser CORS allowlist must contain only the exact Loop development/produ
 - Supabase Auth must use the stable staging HTTPS origin as Site URL and allow only its exact `/auth/callback` route. Password recovery fails closed when `NEXT_PUBLIC_SITE_URL` is absent and never falls back to localhost in a production build.
 - R2 CORS must name the same exact stable staging origin. The bucket stays private, with no `r2.dev` URL; CORS does not make an object public and does not replace short-lived signed URL authorization.
 - Staging uses its own publishable/secret keys, R2 access pair/bucket, and VAPID pair. The local seed, local invitation activation, Mailpit, test credentials, and local Supabase runtime files are development-only and must not be deployed.
+- Staging fixtures use a separate fail-closed command guarded by the immutable approved project ref, exact Supabase/site URLs, explicit staging environment marker, and exact `loop-media-staging` bucket name. Credentials remain only in `supabase/.temp/staging-test-credentials.json`. The seed refuses any unknown Auth user or school rather than inferring that a populated target is safe.
+- Authenticated server-side Supabase requests force `cache: no-store`. Private role, tenant, attendance, care, message, media, and push data must be read per request and must never enter a shared Next.js/Vercel response or data cache.
 
 ## Still required in later steps
 

@@ -12,6 +12,8 @@
     "test": "vitest run lib",
     "test:pwa": "vitest run lib/pwa/service-worker.test.ts lib/push/policy.test.ts",
     "seed:local": "node scripts/seed-local.mjs",
+    "seed:staging": "node scripts/seed-staging.mjs",
+    "test:staging-seed": "node --test scripts/staging-target.test.mjs",
     "test:r2": "node --env-file=.env.local scripts/verify-r2.mjs"
   },
   "dependencies": {

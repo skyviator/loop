@@ -37,6 +37,8 @@ Web Push writes are asynchronous. Database triggers append minimal event metadat
 
 `apps/web/lib/supabase` contains typed browser and server client factories using `@supabase/ssr`. Next.js `proxy.ts` performs Auth claim validation/session cookie refresh when public environment variables exist; it does not authorize database rows or redirect the Step 1 welcome page. RLS remains the data boundary. Browser code uses only the publishable key. The server-only privileged factory accepts either the exact local CLI endpoint or an HTTPS Supabase endpoint; only media finalization and push delivery use it outside local development, while invitation account creation remains localhost- and development-guarded.
 
+The authenticated server client supplies a first-party fetch wrapper with `cache: "no-store"`. This keeps role-scoped Supabase reads request-bound on Next.js/Vercel and prevents stale or cross-user private application data from entering a shared data cache.
+
 ## Local backend
 
 Supabase CLI and JavaScript packages are project-scoped and pinned. The local stack uses PostgreSQL 17 plus Auth, Data API, Studio, and the default local supporting services. The observed full stack fit the approximately 8 GB Docker allocation, so no services are excluded.
@@ -72,3 +74,5 @@ Messaging uses one guardian-to-school thread per guardian/child pair. PostgreSQL
 Root scripts provide one entry point for development, linting, type checking, and production builds. Versions are pinned and recorded in the lockfile for reproducible installs.
 
 Step 6B introduces no deployment topology beyond isolated staging preparation. The private Vercel `loop-staging` project uses `apps/web` as its Root Directory and treats the `staging` branch as its Production environment; the stable project origin, not an ephemeral deployment URL, must be used for Auth redirects and R2 CORS. The linked `Loop Staging` Supabase project receives migration-only schema changes and no local seed or real data. A later production release requires separate Supabase, Vercel, R2, VAPID, email, backup, monitoring, and secret material.
+
+Step 6C staging fixtures are created only with `pnpm seed:staging` after its exact project, URL, environment, and bucket guards pass. The four random test passwords are local-only in `supabase/.temp/staging-test-credentials.json`; the repository contains only reserved fictional identities and deterministic non-secret fixture identifiers.

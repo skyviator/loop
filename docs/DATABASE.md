@@ -38,6 +38,8 @@ Sleep start is a care batch with `started_at`; a partial unique index prevents a
 
 `pnpm seed:local` loads two fictional schools plus platform, school-admin, teacher, and guardian accounts; classroom structure; a 15-child operational QA roster; timetable; attendance; and care examples. It writes newly generated test passwords and one local invite URL only to `supabase/.temp/test-credentials.json`, which is ignored by Git. Run the seed only against the guarded localhost stack after `pnpm supabase:reset`.
 
+`pnpm seed:staging` is a separate staging-only fixture command. It fails closed unless `LOOP_ENV=staging`, the Supabase URL is the approved `Loop Staging` project, the site URL is the stable staging origin, the R2 bucket is exactly `loop-media-staging`, and a current `sb_secret_` key is supplied server-side. It also refuses unknown Auth users or schools. The command creates or reuses only deterministic fictional TEST records and writes newly generated passwords to the Git-ignored `supabase/.temp/staging-test-credentials.json`; never copy that file into source control, logs, screenshots, or chat.
+
 Timetable display state is derived from an injected clock, the school IANA timezone, attendance, exceptions, and explicit care confirmation. Time passing produces `ended_unconfirmed`, never `confirmed`; absence produces `absent`, never completion.
 
 ## Step 4 private media
