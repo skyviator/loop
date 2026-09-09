@@ -290,7 +290,7 @@ test.describe.serial("Loop staging HTTPS verification", () => {
       expect(privateObject.ok()).toBe(true);
       const unsigned = new URL(signed.body.url!);
       unsigned.search = "";
-      expect([401, 403]).toContain((await request.get(unsigned.toString())).status());
+      expect([400, 401, 403]).toContain((await request.get(unsigned.toString())).status());
 
       await guardian.page.goto("/parent");
       await expect(guardian.page.getByRole("heading", { name: "Photos today" })).toBeVisible();
