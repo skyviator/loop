@@ -53,7 +53,7 @@ pnpm supabase:test
 pnpm supabase:types
 ```
 
-Copy `apps/web/.env.example` to an ignored `.env.local`, then obtain the local publishable key with `pnpm exec supabase status --output env`. The local seed/invitation activator also needs the local service-role key in the server-only variable documented by the example. Never put `SECRET_KEY`, `SERVICE_ROLE_KEY`, or the database password in a `NEXT_PUBLIC_` variable.
+Copy `apps/web/.env.example` to an ignored `.env.local`, then obtain the local publishable and secret keys with `pnpm exec supabase status --output env`. Map the local `SECRET_KEY` output to the server-only `SUPABASE_SECRET_KEY` variable documented by the example. Never put `SECRET_KEY`, `SUPABASE_SECRET_KEY`, or the database password in a `NEXT_PUBLIC_` variable.
 
 Create each database change with `pnpm exec supabase migration new <name>`. Edit that new migration, run `pnpm supabase:reset`, run `pnpm supabase:test`, then regenerate `packages/types/src/database.generated.ts` with `pnpm supabase:types`.
 

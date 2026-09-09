@@ -22,9 +22,12 @@ const env = Object.fromEntries(
 if (!/^http:\/\/(127\.0\.0\.1|localhost):54321$/.test(env.API_URL ?? "")) {
   throw new Error("Local seed refused: Supabase API is not the Loop localhost stack.");
 }
+if (!env.SECRET_KEY?.startsWith("sb_secret_")) {
+  throw new Error("Local seed refused: the current Supabase secret key is unavailable.");
+}
 
-const admin = createClient(env.API_URL, env.SERVICE_ROLE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
+const admin = createClient(env.API_URL, env.SECRET_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
 });
 
 function password() {

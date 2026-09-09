@@ -6,8 +6,10 @@ import type { Database } from "@loop/types";
 
 function adminConfiguration() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !secret) throw new Error("Privileged server operation is unavailable.");
+  const secret = process.env.SUPABASE_SECRET_KEY;
+  if (!url || !secret?.startsWith("sb_secret_")) {
+    throw new Error("Privileged server operation is unavailable.");
+  }
 
   let parsed: URL;
   try {
@@ -29,7 +31,7 @@ function adminConfiguration() {
 
 function clientFor(configuration: ReturnType<typeof adminConfiguration>) {
   return createClient<Database>(configuration.url, configuration.secret, {
-    auth: { autoRefreshToken: false, persistSession: false },
+    auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
   });
 }
 

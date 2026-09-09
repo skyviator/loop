@@ -16,7 +16,9 @@ function environment(path: string) {
 }
 
 const local = environment(resolve(process.cwd(), "apps/web/.env.local"));
-const admin = createClient(local.NEXT_PUBLIC_SUPABASE_URL, local.SUPABASE_SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+const admin = createClient(local.NEXT_PUBLIC_SUPABASE_URL, local.SUPABASE_SECRET_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+});
 const r2Endpoint = new URL(local.R2_ENDPOINT).origin;
 const r2 = new S3Client({ endpoint: r2Endpoint, region: local.R2_REGION, credentials: { accessKeyId: local.R2_ACCESS_KEY_ID, secretAccessKey: local.R2_SECRET_ACCESS_KEY } });
 

@@ -40,10 +40,10 @@ Loop is a privacy-sensitive, multi-tenant nursery/preschool parent communication
 
 - Enforce multi-tenant isolation, least privilege, and authorization server-side and in the database; frontend visibility is never a security boundary.
 - Use Supabase RLS on relevant exposed tables. Keep child media private and issue short-lived signed URLs.
-- Never expose service-role keys. Validate untrusted input and protect against IDOR, XSS, CSRF, SQL injection, and privilege escalation.
+- Never expose Supabase secret keys. Validate untrusted input and protect against IDOR, XSS, CSRF, SQL injection, and privilege escalation.
 - Use secure session handling and audit security-relevant/admin actions. Do not put sensitive child details in notification or lock-screen copy by default.
 - Platform administration is not a child-data bypass. Keep privileged helpers in the unexposed `private` schema with explicit `search_path` and execute grants.
-- Service-role, VAPID-private, R2, database, and deployment credentials are server-only and environment-specific. Never print them or prefix them with `NEXT_PUBLIC_`.
+- Supabase secret, VAPID-private, R2, database, and deployment credentials are server-only and environment-specific. Never print them or prefix them with `NEXT_PUBLIC_`.
 
 ## Change checklist
 
