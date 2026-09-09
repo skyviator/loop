@@ -204,7 +204,9 @@ test.describe.serial("Loop staging HTTPS verification", () => {
       await expect(teacher.page.getByText("Child Three", { exact: true })).toHaveCount(0);
       const arrival = teacher.page.locator(".bulk-arrivals label").filter({ hasText: "Child One" });
       await arrival.locator("input").check();
+      const checkIn = teacher.page.waitForResponse((response) => new URL(response.url()).pathname === "/teacher" && response.request().method() === "POST");
       await teacher.page.getByRole("button", { name: "Check in selected" }).click();
+      expect((await checkIn).ok()).toBe(true);
       await teacher.page.reload();
       await expect(teacher.page.getByText("2 / 2", { exact: true })).toBeVisible();
       const carePanel = teacher.page.getByRole("tabpanel");
@@ -298,7 +300,9 @@ test.describe.serial("Loop staging HTTPS verification", () => {
 
       await teacher.page.goto("/teacher");
       const childRow = teacher.page.locator(".attendance-row").filter({ hasText: "Child One" });
+      const checkOut = teacher.page.waitForResponse((response) => new URL(response.url()).pathname === "/teacher" && response.request().method() === "POST");
       await childRow.getByRole("button", { name: "Check out" }).click();
+      expect((await checkOut).ok()).toBe(true);
       await teacher.page.reload();
       await expect(teacher.page.locator(".attendance-row").filter({ hasText: "Child One" })).toContainText("Checked out");
 
