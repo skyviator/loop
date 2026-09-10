@@ -78,7 +78,7 @@ export default async function UpdatesPage() {
   const branchName = new Map(branchItems.map((item) => [item.id, item.name]));
   const audience = (item: { target_scope: string; branch_id: string | null; classroom_id: string | null }) => item.target_scope === "school" ? "Whole school" : item.target_scope === "branch" ? branchName.get(item.branch_id ?? "") : classroomName.get(item.classroom_id ?? "");
 
-  return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Updates" nav={communicationNavigation(role)}>
+  return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Updates" nav={communicationNavigation(role)} contentWidth="wide">
     {!enabled.has("announcements") && !enabled.has("calendar") ? <StatusNote tone="warning">Announcements and calendar are not enabled for this school.</StatusNote> : null}
     <div className="updates-grid">
       {enabled.has("announcements") ? <section className="section-panel"><div className="section-heading"><div><p className="eyebrow">School communication</p><h2>Announcements</h2></div></div>

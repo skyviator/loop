@@ -6,9 +6,9 @@ import { AppShell, StatusNote } from "@/components/app-shell";
 import { LoopIcon } from "@/components/loop-icon";
 import { PrivatePhoto } from "@/components/private-photo";
 import { requireViewer } from "@/lib/auth";
+import { guardianNavigation } from "@/lib/navigation";
 import { createClient } from "@/lib/supabase/server";
 
-const nav = [{ href: "/parent", label: "Today", icon: "home" as const }, { href: "/messages", label: "Messages", icon: "message" as const }, { href: "/updates", label: "Calendar", icon: "calendar" as const }, { href: "/settings", label: "Settings", icon: "settings" as const }];
 const statusCopy = { upcoming: "Later", now: "Now", confirmed: "Confirmed", ended_unconfirmed: "Ended — no update yet", absent: "Absent" };
 
 function outcomeCopy(value: string | null) {
@@ -49,12 +49,12 @@ export default async function ParentPage({ searchParams }: { searchParams: Promi
   const supabase = await createClient();
   const links = await supabase.from("child_guardians").select("child_id, is_primary, children(id, preferred_name)").eq("guardian_membership_id", viewer.membershipId!).eq("status", "active").order("is_primary", { ascending: false }).order("created_at");
   const selectedLink = links.data?.find((link) => link.child_id === state.child) ?? links.data?.[0];
-  if (!selectedLink) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={nav}><StatusNote tone="warning">No child is linked to this guardian account. Ask the school administrator to review the guardian link.</StatusNote></AppShell>;
+  if (!selectedLink) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={guardianNavigation} contentWidth="standard"><StatusNote tone="warning">No child is linked to this guardian account. Ask the school administrator to review the guardian link.</StatusNote></AppShell>;
   const childId = selectedLink.child_id;
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: viewer.timezone }).format(new Date());
   const weekday = new Date(`${today}T00:00:00+05:30`).getUTCDay() || 7;
   const enrollment = await supabase.from("child_enrollments").select("id, classroom_id").eq("child_id", childId).eq("status", "active").maybeSingle();
-  if (!enrollment.data) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={nav}><StatusNote tone="warning">This child does not have an active classroom enrollment.</StatusNote></AppShell>;
+  if (!enrollment.data) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={guardianNavigation} contentWidth="standard"><StatusNote tone="warning">This child does not have an active classroom enrollment.</StatusNote></AppShell>;
 
   const [attendance, care, slots, exceptions, photoLinks] = await Promise.all([
     supabase.from("attendance_records").select("id, status, checked_in_at, checked_out_at").eq("child_id", childId).eq("service_date", today).maybeSingle(),
@@ -92,15 +92,16 @@ export default async function ParentPage({ searchParams }: { searchParams: Promi
     return [{ id: item.id, occurredAt: item.recorded_at, kind: "care", title: careTitle(item.category, item.outcome_code), detail: careDetail(item), status: "confirmed" }];
   });
   const timeline = mergeTimeline(attendanceItems, timetableItems, standaloneCare);
+  const todayPhotos = (photoLinks.data ?? []).filter((link) => link.media_assets?.status === "ready" && calendarDate(link.media_assets.created_at, viewer.timezone) === today);
   const childName = selectedLink.children?.preferred_name ?? "Child";
 
-  return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={nav}>
+  return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={guardianNavigation} contentWidth="standard">
     <section className="parent-heading"><div><p className="eyebrow">Child</p><h2>{childName}</h2></div>{(links.data?.length ?? 0) > 1 ? <div className="child-switcher" aria-label="Choose child">{links.data?.map((link) => <Link className={link.child_id === childId ? "selected" : ""} key={link.child_id} href={`/parent?child=${link.child_id}`}>{link.children?.preferred_name ?? "Child"}</Link>)}</div> : null}<time>{new Date(`${today}T12:00:00+05:30`).toLocaleDateString("en-LK", { weekday: "long", day: "numeric", month: "long" })}</time></section>
     {attendanceStatus === "absent" || attendanceStatus === "excused" ? <StatusNote tone="warning">{childName} is marked {attendanceStatus}. Timetable activities are not shown as completed.</StatusNote> : null}
-    {photoLinks.data?.length ? <section className="today-photos" aria-label={`${childName}'s photos`}><div className="section-heading"><div><p className="eyebrow">Shared privately</p><h2>Photos today</h2></div></div><div className="photo-grid">{photoLinks.data.filter((link) => link.media_assets?.status === "ready" && calendarDate(link.media_assets.created_at, viewer.timezone) === today).map((link) => <PrivatePhoto assetId={link.asset_id} caption={link.media_assets?.caption ?? null} key={link.asset_id} />)}</div></section> : null}
-    <section id="timeline" className="timeline" aria-label={`${childName}'s timeline`}>
+    {todayPhotos.length ? <section className="today-photos" aria-label={`${childName}'s photos`}><div className="section-heading"><div><p className="eyebrow">Shared privately</p><h2>Photos today</h2></div></div><div className="photo-grid">{todayPhotos.map((link) => <PrivatePhoto assetId={link.asset_id} caption={link.media_assets?.caption ?? null} key={link.asset_id} />)}</div></section> : null}
+    <section id="timeline" className={timeline.length ? "timeline" : "timeline timeline-is-empty"} aria-label={`${childName}'s timeline`}>
       {timeline.map((item) => <article className={`timeline-item timeline-${item.status ?? "confirmed"}`} key={`${item.kind}-${item.id}`}><time>{new Date(item.occurredAt).toLocaleTimeString("en-LK", { hour: "numeric", minute: "2-digit", timeZone: viewer.timezone })}</time><span className="timeline-dot"><LoopIcon name={item.kind === "attendance" ? "attendance" : item.kind === "care" ? "note" : "clock"} className="size-5" /></span><div><h3>{item.title}</h3>{item.detail ? <p>{item.detail}</p> : null}</div><strong>{item.status ? statusCopy[item.status] : "Recorded"}</strong></article>)}
-      {!timeline.length ? <div className="empty-state"><LoopIcon name="calendar" className="size-8" /><h2>No updates yet</h2><p>Today’s attendance, timetable, and care updates will appear here.</p></div> : null}
+      {!timeline.length ? <div className="timeline-empty"><LoopIcon name="calendar" className="size-8" /><h2>No updates yet</h2><p>Today’s attendance, timetable, and care updates will appear here.</p></div> : null}
     </section>
   </AppShell>;
 }

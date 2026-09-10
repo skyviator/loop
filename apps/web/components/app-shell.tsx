@@ -1,25 +1,18 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { LoopIcon, type LoopIconName } from "./loop-icon";
+import type { NavItem } from "@/lib/navigation";
+
 import { LoopLogo } from "./logo";
+import { PrimaryNavigation } from "./primary-navigation";
 import { SignOutButton } from "./sign-out-button";
 
-type NavItem = { href: string; label: string; icon: LoopIconName };
-
-export function AppShell({ eyebrow, title, nav, children }: { eyebrow: string; title: string; nav: NavItem[]; children: ReactNode }) {
+export function AppShell({ eyebrow, title, nav, contentWidth, children }: { eyebrow: string; title: string; nav: readonly NavItem[]; contentWidth?: "standard" | "wide"; children: ReactNode }) {
   return (
     <div className="app-frame">
       <aside className="side-nav">
         <Link href="/app" className="brand-link" aria-label="Loop home"><LoopLogo compact /></Link>
-        <nav aria-label="Primary">
-          {nav.map((item) => (
-            <Link key={item.href} href={item.href} className="nav-link">
-              <LoopIcon name={item.icon} className="size-5" />
-              <span>{item.label}</span>
-            </Link>
-          ))}
-        </nav>
+        <PrimaryNavigation items={nav} />
         <SignOutButton />
       </aside>
       <div className="app-main">
@@ -27,7 +20,7 @@ export function AppShell({ eyebrow, title, nav, children }: { eyebrow: string; t
           <div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div>
           <SignOutButton mobile />
         </header>
-        <main className="content">{children}</main>
+        <main className={`content${contentWidth ? ` content-${contentWidth}` : ""}`}>{children}</main>
       </div>
     </div>
   );

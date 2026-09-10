@@ -14,7 +14,7 @@ export default async function SettingsPage() {
     .maybeSingle();
 
   return (
-    <AppShell eyebrow={viewer.schoolName ?? "School"} title="Settings" nav={communicationNavigation(viewer.role!)}>
+    <AppShell eyebrow={viewer.schoolName ?? "School"} title="Settings" nav={communicationNavigation(viewer.role!)} contentWidth="standard">
       <InstallPushSettings
         role={viewer.role as "school_admin" | "teacher" | "guardian"}
         vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""}

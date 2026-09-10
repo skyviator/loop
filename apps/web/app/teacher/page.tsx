@@ -7,16 +7,15 @@ import { PrivatePhoto } from "@/components/private-photo";
 import { TeacherCarePanel } from "@/components/teacher-care-panel";
 import { TeacherMediaPanel } from "@/components/teacher-media-panel";
 import { requireViewer } from "@/lib/auth";
+import { teacherNavigation } from "@/lib/navigation";
 import { createClient } from "@/lib/supabase/server";
-
-const nav = [{ href: "/teacher", label: "Today", icon: "home" as const }, { href: "/teacher#attendance", label: "Attendance", icon: "attendance" as const }, { href: "/teacher#care", label: "Record care", icon: "note" as const }, { href: "/messages", label: "Messages", icon: "message" as const }, { href: "/updates", label: "Updates", icon: "announcement" as const }, { href: "/settings", label: "Settings", icon: "settings" as const }];
 
 export default async function TeacherPage() {
   const viewer = await requireViewer(["teacher"]);
   const supabase = await createClient();
   const assignment = await supabase.from("classroom_staff_assignments").select("classroom_id, classrooms(name)").eq("membership_id", viewer.membershipId!).eq("status", "active").lte("starts_on", new Date().toISOString().slice(0, 10)).or(`ends_on.is.null,ends_on.gte.${new Date().toISOString().slice(0, 10)}`).limit(1).maybeSingle();
   const classroomId = assignment.data?.classroom_id;
-  if (!classroomId) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Classroom today" nav={nav}><StatusNote tone="warning">You are signed in as a teacher, but no active classroom is assigned. Ask a school administrator to assign one.</StatusNote></AppShell>;
+  if (!classroomId) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Classroom today" nav={teacherNavigation} contentWidth="wide"><StatusNote tone="warning">You are signed in as a teacher, but no active classroom is assigned. Ask a school administrator to assign one.</StatusNote></AppShell>;
 
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: viewer.timezone }).format(new Date());
   const weekday = new Date(`${today}T00:00:00+05:30`).getUTCDay() || 7;
@@ -55,7 +54,7 @@ export default async function TeacherPage() {
     };
   });
 
-  return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Classroom today" nav={nav}>
+  return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Classroom today" nav={teacherNavigation} contentWidth="wide">
     <section className="teacher-hero"><div><p className="eyebrow">Assigned classroom</p><h2>{assignment.data?.classrooms?.name ?? "Classroom"}</h2></div><p className="present-count"><strong>{presentCount}</strong><span>present</span><small>of {enrollments.data?.length ?? 0}</small></p></section>
     <section className="now-next"><div><p className="eyebrow">Now</p><strong>{current?.title ?? "No activity now"}</strong><span>{current ? `${current.start_time.slice(0,5)}–${current.end_time.slice(0,5)}` : "—"}</span></div><div><p className="eyebrow">Next</p><strong>{next?.title ?? "Day complete"}</strong><span>{next ? `${next.start_time.slice(0,5)}–${next.end_time.slice(0,5)}` : "—"}</span></div></section>
     <section id="attendance" className="section-panel"><div className="section-heading"><div><p className="eyebrow">Today</p><h2>Attendance</h2></div><span className="count-label">{presentCount} / {enrollments.data?.length ?? 0}</span></div>{enrollments.data?.some((enrollment) => { const record = attendanceByChild.get(enrollment.child_id); return !record || record.status === "expected"; }) ? <form action={bulkCheckInAction} className="bulk-arrivals"><div className="bulk-arrivals-heading"><strong>Arriving together?</strong><button className="button button-secondary" type="submit">Check in selected</button></div><div className="bulk-arrival-choices">{enrollments.data?.map((enrollment) => { const record = attendanceByChild.get(enrollment.child_id); return !record || record.status === "expected" ? <label className="check-field" key={enrollment.id}><input type="checkbox" name="child_id" value={enrollment.child_id} /> {enrollment.children?.preferred_name ?? "Child"}</label> : null; })}</div></form> : null}<div className="attendance-list">{enrollments.data?.map((enrollment) => { const record = attendanceByChild.get(enrollment.child_id); const isPresent = record?.status === "present" && !record.checked_out_at; const isCheckedOut = Boolean(record?.checked_out_at); const canCheckIn = !record || record.status === "expected"; return <div className="attendance-row" key={enrollment.id}><span className={`attendance-mark ${isPresent ? "is-present" : ""}`}><LoopIcon name={isPresent ? "check" : "clock"} className="size-5" /></span><strong>{enrollment.children?.preferred_name ?? "Child"}</strong><span>{isPresent ? "Checked in" : isCheckedOut ? "Checked out" : record?.status ?? "Expected"}</span>{isPresent || canCheckIn ? <form action={setAttendanceAction}><input type="hidden" name="child_id" value={enrollment.child_id} /><button className="text-button" name="attendance_action" value={isPresent ? "check_out" : "check_in"} type="submit">{isPresent ? "Check out" : "Check in"}</button></form> : <span className="meta">Recorded</span>}</div>; })}</div></section>

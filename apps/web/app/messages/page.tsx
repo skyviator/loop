@@ -12,7 +12,7 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
   const state = await searchParams;
   const supabase = await createClient();
   const feature = await supabase.from("school_feature_settings").select("is_enabled").eq("school_id", viewer.schoolId!).eq("feature_key", "messaging").maybeSingle();
-  if (!feature.data?.is_enabled) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Messages" nav={communicationNavigation(viewer.role!)}><StatusNote tone="warning">Messaging is not enabled for this school.</StatusNote></AppShell>;
+  if (!feature.data?.is_enabled) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Messages" nav={communicationNavigation(viewer.role!)} contentWidth="wide"><StatusNote tone="warning">Messaging is not enabled for this school.</StatusNote></AppShell>;
 
   const [threads, reads, guardianLinks] = await Promise.all([
     supabase.from("message_threads").select("id, child_id, guardian_membership_id, updated_at, children(preferred_name)").eq("status", "active").order("updated_at", { ascending: false }).limit(50),
@@ -27,7 +27,7 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
   const orderedMessages = [...(messageResult.data ?? [])].reverse();
   const existingChildren = new Set(threads.data?.map((thread) => thread.child_id));
 
-  return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Messages" nav={communicationNavigation(viewer.role!)}>
+  return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Messages" nav={communicationNavigation(viewer.role!)} contentWidth="wide">
     <div className="messages-layout">
       <aside className="thread-list" aria-label="Conversations">
         <div className="section-heading"><h2>Conversations</h2></div>
