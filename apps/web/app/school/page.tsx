@@ -41,7 +41,7 @@ const nav = [
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-export default async function SchoolPage({ searchParams }: { searchParams: Promise<{ invite?: string }> }) {
+export default async function SchoolPage({ searchParams }: { searchParams: Promise<{ invite?: string; membershipError?: string }> }) {
   const viewer = await requireViewer(["school_admin"]);
   const state = await searchParams;
   const supabase = await createClient();
@@ -85,6 +85,7 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
 
   return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Overview" nav={nav}>
     {state.invite ? <StatusNote tone="success">Local-only invite URL: <a className="text-link break-all" href={state.invite}>{state.invite}</a></StatusNote> : null}
+    {state.membershipError ? <StatusNote tone="warning">{state.membershipError}</StatusNote> : null}
     <section className="overview-band"><Stat value={activeChildren.length} label="active children" /><Stat value={activeStaff.length} label="active staff" /><Stat value={branches.data?.filter((item) => item.status === "active").length ?? 0} label="branches" /><Stat value={classrooms.data?.filter((item) => item.status === "active").length ?? 0} label="classrooms" /></section>
     <div className="content-grid">
       <section id="classrooms" className="section-panel span-two"><div className="section-heading"><div><p className="eyebrow">Structure</p><h2>Branches and classrooms</h2></div></div>

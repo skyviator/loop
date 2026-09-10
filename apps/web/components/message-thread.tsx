@@ -24,12 +24,26 @@ export function MessageThread({ threadId, guardianMembershipId, viewerUserId, in
         return;
       }
       await supabase.realtime.setAuth(data.session.access_token);
+      const refreshMessages = async () => {
+        const result = await supabase
+          .from("messages")
+          .select("id, body, created_at, sender_user_id, sender_membership_id")
+          .eq("thread_id", threadId)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(30);
+        if (cancelled) return;
+        if (result.error) {
+          setMessages([]);
+          setRealtimeStatus("error");
+          return;
+        }
+        setMessages([...(result.data ?? [])].reverse());
+        void markThreadReadAction(threadId);
+      };
       channel = supabase.channel(`message-thread:${threadId}`, { config: { private: true } })
-        .on("broadcast", { event: "INSERT" }, (payload) => {
-          const record = payload.payload.record as Message | undefined;
-          if (!record?.id) return;
-          setMessages((current) => current.some((item) => item.id === record.id) ? current : [...current, record]);
-          void markThreadReadAction(threadId);
+        .on("broadcast", { event: "message_changed" }, () => {
+          void refreshMessages();
         })
         .subscribe((status) => {
           if (status === "SUBSCRIBED") setRealtimeStatus("ready");

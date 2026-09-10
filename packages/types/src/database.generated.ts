@@ -1772,6 +1772,13 @@ export type Database = {
         }
         Returns: Json
       }
+      set_school_membership_status: {
+        Args: {
+          target_membership_id: string
+          target_status: Database["public"]["Enums"]["record_status"]
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       announcement_priority: "normal" | "important"

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -9,14 +10,24 @@ type Account = { role: string; email: string; password: string };
 const credentials = JSON.parse(readFileSync(resolve(process.cwd(), "supabase/.temp/test-credentials.json"), "utf8")) as { accounts: Account[] };
 
 function environment(path: string) {
-  return Object.fromEntries(readFileSync(path, "utf8").split(/\r?\n/).flatMap((line) => {
+  return parseEnvironment(readFileSync(path, "utf8"));
+}
+
+function parseEnvironment(value: string) {
+  return Object.fromEntries(value.split(/\r?\n/).flatMap((line) => {
     const match = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
     return match ? [[match[1], match[2].trim().replace(/^['"]|['"]$/g, "")]] : [];
   }));
 }
 
 const local = environment(resolve(process.cwd(), "apps/web/.env.local"));
-const admin = createClient(local.NEXT_PUBLIC_SUPABASE_URL, local.SUPABASE_SECRET_KEY, {
+const localStatus = parseEnvironment(process.platform === "win32"
+  ? execFileSync("cmd.exe", ["/d", "/s", "/c", "pnpm exec supabase status --output env --network-id loop-local-network"], { cwd: process.cwd(), encoding: "utf8" })
+  : execFileSync("pnpm", ["exec", "supabase", "status", "--output", "env", "--network-id", "loop-local-network"], { cwd: process.cwd(), encoding: "utf8" }));
+if (localStatus.API_URL !== "http://127.0.0.1:54321" || !localStatus.SECRET_KEY?.startsWith("sb_secret_")) {
+  throw new Error("Step 4 tests require the guarded local Supabase environment.");
+}
+const admin = createClient(localStatus.API_URL, localStatus.SECRET_KEY, {
   auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
 });
 const r2Endpoint = new URL(local.R2_ENDPOINT).origin;

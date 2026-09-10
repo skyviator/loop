@@ -32,6 +32,10 @@ Sleep start is a care batch with `started_at`; a partial unique index prevents a
 
 `audit_log` is append-oriented. Triggers record allow-listed administrative state for memberships, classroom assignments, school feature settings, timetable changes, invitations, platform assignments, and school plan/status changes. Application roles cannot mutate audit rows.
 
+Lifecycle authorization treats `schools.status = active` as the universal school-workspace boundary. Teacher/guardian operational access also requires active branch/classroom/child records, a current active enrollment, an active membership, and the relevant current assignment or guardian link. School Admin reads deliberately retain same-school archived structure and child history while the school remains active. Branch, classroom, child, enrollment, and guardian-link lifecycle changes are added to the reduced audit allow-list without copying names or child content.
+
+Direct authenticated INSERT, UPDATE, and DELETE privileges on `school_memberships` are revoked. `set_school_membership_status` is the sole School Admin mutation surface: it accepts only a membership identifier and `record_status`, re-derives the caller and tenant, and updates only `status`. A database trigger uses a per-school transaction advisory lock before any update/delete that would remove an active administrator, so concurrent requests cannot remove the last active School Admin from an active school.
+
 ## Step 3 enforcement and local data
 
 `schools.teachers_can_manage_timetable` is the explicit school-level permission for assigned teachers. RLS combines it with membership, classroom assignment, and the timetable feature. Database triggers serialize active-child and active-staff counts and reject writes beyond the school plan, so plan limits do not depend on UI checks. `move_child_enrollment` locks and completes the prior active enrollment before inserting the destination enrollment; school plan/status edits are independently trigger-protected as platform-owned fields.
@@ -54,7 +58,9 @@ High-quality, display, and thumbnail keys use separate global prefixes: `origina
 
 ## Step 4 communication
 
-`message_threads` identifies one guardian/child school conversation; `messages` stores text and sender identity, and `message_thread_reads` stores one read cursor per participating membership. RLS grants the named guardian, active school administrators, and active teachers currently assigned to the child's classroom. Assignment, guardian-link, membership, feature, and tenant changes are evaluated on every access, so revocation does not depend on cached thread membership.
+`message_threads` identifies one guardian/child school conversation; `messages` stores text and sender identity, and `message_thread_reads` stores one read cursor per participating membership. RLS grants the named guardian, active school administrators, and active teachers currently assigned to the child's active classroom. Assignment, guardian-link, membership, feature, tenant, and structure lifecycle changes are evaluated on every Data API access.
+
+Supabase private-channel authorization is cached for an existing Realtime connection, so Loop does not use the channel payload as a data-delivery boundary. The message trigger sends only a constant `message_changed` invalidation signal. The browser then fetches messages through RLS; a revoked stale socket may briefly see the signal but cannot receive a new message body from Broadcast or from the subsequent database request.
 
 `announcements` and `calendar_events` have normalized school, branch, or classroom targets. RLS filters guardian and teacher reads to current linked/assigned contexts, while mutations combine the feature gate, tenant target validation, administrator role, and the two default-off teacher permission settings. Times are stored as instants and form input is interpreted in the school's IANA timezone.
 
@@ -66,7 +72,7 @@ High-quality, display, and thumbnail keys use separate global prefixes: `origina
 
 `private.notification_outbox` stores minimal event references and generic privacy-safe copy. Database triggers enqueue only attendance check-in/check-out, new message, newly published important announcement, and ready photo events. `care_events`, timetable tables, normal announcements, and other routine activity have no push trigger. `private.push_deliveries` records per-subscription delivery state, bounded attempts, status class, and HTTP status without response bodies.
 
-The service-only claim function materializes and rechecks recipients from current memberships, guardian links, classroom assignments, targets, feature state, and preferences using `FOR UPDATE SKIP LOCKED`. Revocation therefore blocks pending as well as future delivery. A 404/410 completion marks the endpoint inactive; temporary failures receive bounded exponential retry metadata. The local Next.js dispatcher is best effort after successful writes, while the retained outbox requires a monitored scheduled worker before production deployment.
+The service-only claim function materializes and rechecks recipients from active schools, branches, classrooms, children, current enrollments, memberships, guardian links, classroom assignments, targets, feature state, and preferences using `FOR UPDATE SKIP LOCKED`. Revocation therefore blocks pending as well as future delivery. A 404/410 completion marks the endpoint inactive; temporary failures receive bounded exponential retry metadata. The local Next.js dispatcher is best effort after successful writes, while the retained outbox requires a monitored scheduled worker before production deployment.
 
 ## Deferred
 

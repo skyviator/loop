@@ -255,7 +255,7 @@ select extensions.lives_ok($$insert into public.care_events (school_id, child_id
 select pg_temp.throws_any($$insert into public.care_events (school_id, child_id, classroom_id, enrollment_id, category, meal_outcome, recorded_by_membership_id, recorded_by_user_id) values ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000030', 'b0000000-0000-0000-0000-000000000020', 'b0000000-0000-0000-0000-000000000050', 'meal', 'ate_all', 'b0000000-0000-0000-0000-000000000042', '20000000-0000-0000-0000-000000000002')$$, 'teacher A cannot create care in School B');
 select extensions.lives_ok($$update public.care_events set note = 'Updated by assigned teacher' where id = 'a0000000-0000-0000-0000-000000000071'$$, 'teacher A can update assigned care event');
 select pg_temp.throws_any($$delete from public.care_events where id = 'a0000000-0000-0000-0000-000000000071'$$, 'teacher cannot hard-delete care history');
-select extensions.lives_ok($$update public.school_memberships set role = 'school_admin' where id = 'a0000000-0000-0000-0000-000000000042'$$, 'teacher role update is filtered');
+select pg_temp.throws_any($$update public.school_memberships set role = 'school_admin' where id = 'a0000000-0000-0000-0000-000000000042'$$, 'teacher has no direct membership update privilege');
 select pg_temp.throws_any($$insert into public.classroom_staff_assignments (school_id, classroom_id, membership_id) values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000021', 'a0000000-0000-0000-0000-000000000042')$$, 'teacher cannot self-assign another classroom');
 reset role;
 select extensions.is((select role::text from public.school_memberships where id = 'a0000000-0000-0000-0000-000000000042'), 'teacher', 'teacher A did not self-promote');
@@ -812,6 +812,312 @@ select pg_temp.throws_any(
   'denied consent blocks a teacher photo reservation'
 );
 reset role;
+
+-- Access-lifecycle hardening: the database, not UI visibility, enforces current
+-- school/structure/relationship state and the narrow membership mutation path.
+select extensions.is(
+  has_table_privilege('authenticated', 'public.school_memberships', 'UPDATE'),
+  false,
+  'authenticated has no direct membership UPDATE table privilege'
+);
+select extensions.is(
+  has_table_privilege('authenticated', 'public.school_memberships', 'INSERT'),
+  false,
+  'authenticated has no direct membership INSERT table privilege'
+);
+select extensions.is(
+  has_table_privilege('authenticated', 'public.school_memberships', 'DELETE'),
+  false,
+  'authenticated has no direct membership DELETE table privilege'
+);
+select extensions.is(
+  pg_catalog.pg_get_function_identity_arguments('public.set_school_membership_status(uuid,public.record_status)'::regprocedure),
+  'target_membership_id uuid, target_status record_status',
+  'membership status RPC exposes only membership id and status'
+);
+select extensions.ok(
+  pg_catalog.pg_get_functiondef('private.protect_last_active_school_admin()'::regprocedure) like '%pg_advisory_xact_lock%',
+  'last-admin invariant uses a transaction-scoped advisory lock'
+);
+select extensions.is(
+  (select count(*)::integer from pg_catalog.pg_trigger
+    where tgrelid = 'public.school_memberships'::regclass
+      and tgname in ('school_memberships_protect_last_admin_update', 'school_memberships_protect_last_admin_delete')
+      and not tgisinternal),
+  2,
+  'last-admin invariant covers membership updates and deletes'
+);
+
+insert into auth.users (
+  instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+) values (
+  '00000000-0000-0000-0000-000000000000',
+  '10000000-0000-0000-0000-000000000007',
+  'authenticated', 'authenticated', 'admin-a-two@loop.test',
+  crypt(gen_random_uuid()::text, gen_salt('bf')), now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{"full_name":"Admin A Two"}'::jsonb, now(), now()
+);
+insert into public.school_memberships (id, school_id, user_id, role)
+values ('a0000000-0000-0000-0000-000000000047', 'a0000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000007', 'school_admin');
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$update public.school_memberships set user_id = '10000000-0000-0000-0000-000000000004', role = 'school_admin' where id = 'a0000000-0000-0000-0000-000000000042'$$,
+  'school admin cannot directly mutate protected membership identity or role columns'
+);
+select pg_temp.throws_any(
+  $$update public.school_memberships set school_id = 'b0000000-0000-0000-0000-000000000001' where id = 'a0000000-0000-0000-0000-000000000042'$$,
+  'school admin cannot directly move a membership between tenants'
+);
+select extensions.lives_ok(
+  $$select public.set_school_membership_status('a0000000-0000-0000-0000-000000000042', 'inactive')$$,
+  'school admin can deactivate a same-school teacher through the narrow status RPC'
+);
+select pg_temp.throws_any(
+  $$select public.set_school_membership_status('b0000000-0000-0000-0000-000000000042', 'inactive')$$,
+  'membership status RPC rejects another school'
+);
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.children), 0, 'inactive teacher membership immediately denies child access');
+select extensions.is((select count(*)::integer from public.classrooms), 0, 'inactive teacher membership immediately denies classroom access');
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok(
+  $$select public.set_school_membership_status('a0000000-0000-0000-0000-000000000042', 'active')$$,
+  'school admin can reactivate the same-school teacher'
+);
+select extensions.lives_ok(
+  $$select public.set_school_membership_status('a0000000-0000-0000-0000-000000000047', 'inactive')$$,
+  'one of two active School Admins may be deactivated'
+);
+select pg_temp.throws_any(
+  $$select public.set_school_membership_status('a0000000-0000-0000-0000-000000000041', 'inactive')$$,
+  'the remaining active School Admin cannot deactivate themselves'
+);
+select extensions.lives_ok(
+  $$select public.set_school_membership_status('a0000000-0000-0000-0000-000000000047', 'active')$$,
+  'the remaining School Admin may reactivate another administrator'
+);
+select extensions.lives_ok(
+  $$select public.set_school_membership_status('a0000000-0000-0000-0000-000000000041', 'inactive')$$,
+  'one administrator may be deactivated while another remains active'
+);
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.children), 0, 'inactive School Admin membership denies ordinary child workspace access');
+select extensions.is((select count(*)::integer from public.branches), 0, 'inactive School Admin membership denies ordinary structure workspace access');
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000007', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.set_school_membership_status('a0000000-0000-0000-0000-000000000047', 'inactive')$$,
+  'the second and now-final active School Admin cannot be deactivated'
+);
+select extensions.lives_ok(
+  $$select public.set_school_membership_status('a0000000-0000-0000-0000-000000000041', 'active')$$,
+  'active remaining administrator can restore the first administrator'
+);
+reset role;
+
+-- Platform management can suspend and reactivate a school; every school user
+-- fails closed during suspension while the other tenant remains unaffected.
+select set_config('request.jwt.claim.sub', '90000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok(
+  $$update public.schools set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000001'$$,
+  'platform administrator can suspend School A'
+);
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.schools), 0, 'inactive school denies School Admin ordinary school access');
+select extensions.is((select count(*)::integer from public.children), 0, 'inactive school denies School Admin operational child access');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.classrooms), 0, 'inactive school denies Teacher classroom access');
+select extensions.is((select count(*)::integer from public.messages), 0, 'inactive school denies Teacher message access');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.children), 0, 'inactive school denies Guardian child access');
+select extensions.is((select count(*)::integer from public.media_assets), 0, 'inactive school denies Guardian media access');
+reset role;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.children), 1, 'School B Teacher remains unaffected by School A suspension');
+reset role;
+select set_config('request.jwt.claim.sub', '90000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.schools where id = 'a0000000-0000-0000-0000-000000000001'), 1, 'platform administrator retains the school management row');
+select extensions.lives_ok(
+  $$update public.schools set status = 'active' where id = 'a0000000-0000-0000-0000-000000000001'$$,
+  'platform administrator can reactivate School A'
+);
+reset role;
+
+-- Branch, classroom, child, assignment, enrollment, and guardian-link state are
+-- immediate operational boundaries for Teachers and Guardians. Admin history
+-- visibility and the unrelated tenant are preserved.
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok($$update public.branches set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000010'$$, 'School Admin can archive branch operation');
+select extensions.is((select count(*)::integer from public.classrooms where id = 'a0000000-0000-0000-0000-000000000020'), 1, 'School Admin retains classroom history under inactive branch');
+select extensions.is((select count(*)::integer from public.children where id = 'a0000000-0000-0000-0000-000000000030'), 1, 'School Admin retains child history under inactive branch');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.classrooms where id = 'a0000000-0000-0000-0000-000000000020'), 0, 'inactive branch denies Teacher classroom access');
+select extensions.is((select count(*)::integer from public.children where id = 'a0000000-0000-0000-0000-000000000030'), 0, 'inactive branch denies Teacher child access');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.children), 0, 'inactive branch denies Guardian child access');
+reset role;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.children), 1, 'School B Guardian remains unaffected by School A branch state');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+update public.branches set status = 'active' where id = 'a0000000-0000-0000-0000-000000000010';
+update public.classrooms set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000020';
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.classrooms), 0, 'inactive classroom denies Teacher access despite active assignment');
+select extensions.is((select count(*)::integer from public.children where id = 'a0000000-0000-0000-0000-000000000030'), 0, 'inactive classroom denies Teacher child access');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.children), 0, 'inactive classroom denies Guardian despite active enrollment and link');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.classrooms where id = 'a0000000-0000-0000-0000-000000000020'), 1, 'School Admin retains inactive classroom administration visibility');
+update public.classrooms set status = 'active' where id = 'a0000000-0000-0000-0000-000000000020';
+update public.children set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000030';
+select extensions.is((select count(*)::integer from public.children where id = 'a0000000-0000-0000-0000-000000000030'), 1, 'School Admin retains inactive child history visibility');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.children), 0, 'inactive child denies Teacher operational access');
+select extensions.is((select count(*)::integer from public.messages), 0, 'inactive child denies Teacher messaging access');
+select extensions.is((select count(*)::integer from public.media_upload_reservations), 0, 'inactive tagged child denies Teacher upload finalization lookup');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.children), 0, 'inactive child denies Guardian operational access');
+select extensions.is((select count(*)::integer from public.media_variants), 0, 'inactive child denies Guardian signed-media metadata lookup');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+update public.children set status = 'active' where id = 'a0000000-0000-0000-0000-000000000030';
+update public.classroom_staff_assignments set status = 'inactive', ends_on = current_date where id = 'a0000000-0000-0000-0000-000000000045';
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.children), 0, 'inactive assignment immediately denies Teacher child access');
+select extensions.is((select count(*)::integer from public.media_upload_reservations), 0, 'inactive assignment denies access to an owned upload reservation');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+update public.classroom_staff_assignments set status = 'active', ends_on = null where id = 'a0000000-0000-0000-0000-000000000045';
+update public.child_guardians set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000060';
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.children), 0, 'revoked guardian link immediately denies child timeline access');
+select extensions.is((select count(*)::integer from public.messages), 0, 'revoked guardian link immediately denies message fetch');
+select extensions.is((select count(*)::integer from public.media_variants), 0, 'revoked guardian link denies a new signed-media metadata lookup');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+update public.child_guardians set status = 'active' where id = 'a0000000-0000-0000-0000-000000000060';
+reset role;
+
+-- Current-date enrollment is enforced independently of a lingering active enum.
+update public.child_enrollments set ends_on = current_date - 1 where id = 'a0000000-0000-0000-0000-000000000050';
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.children), 0, 'ended active-status enrollment denies Guardian operational access');
+reset role;
+update public.child_enrollments set ends_on = null where id = 'a0000000-0000-0000-0000-000000000050';
+
+-- Push derivation uses the same current lifecycle graph.
+insert into public.messages (id, thread_id, school_id, sender_membership_id, sender_user_id, body)
+values ('a0000000-0000-0000-0000-000000000123', 'a0000000-0000-0000-0000-000000000120', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000043', '10000000-0000-0000-0000-000000000003', 'Lifecycle test message');
+select extensions.ok(
+  private.user_can_receive_push_event('10000000-0000-0000-0000-000000000002', (select id from private.notification_outbox where source_id = 'a0000000-0000-0000-0000-000000000123')),
+  'active assigned Teacher is initially eligible for message push'
+);
+update public.branches set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000010';
+select extensions.is(
+  private.user_can_receive_push_event('10000000-0000-0000-0000-000000000002', (select id from private.notification_outbox where source_id = 'a0000000-0000-0000-0000-000000000123')),
+  false,
+  'inactive branch removes Teacher from push recipients'
+);
+update public.branches set status = 'active' where id = 'a0000000-0000-0000-0000-000000000010';
+update public.classrooms set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000020';
+select extensions.is(
+  private.user_can_receive_push_event('10000000-0000-0000-0000-000000000002', (select id from private.notification_outbox where source_id = 'a0000000-0000-0000-0000-000000000123')),
+  false,
+  'inactive classroom removes Teacher from push recipients'
+);
+update public.classrooms set status = 'active' where id = 'a0000000-0000-0000-0000-000000000020';
+update public.children set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000030';
+select extensions.is(
+  private.user_can_receive_push_event('10000000-0000-0000-0000-000000000002', (select id from private.notification_outbox where source_id = 'a0000000-0000-0000-0000-000000000123')),
+  false,
+  'inactive child removes Teacher from push recipients'
+);
+update public.children set status = 'active' where id = 'a0000000-0000-0000-0000-000000000030';
+update public.school_memberships set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000042';
+select extensions.is(
+  private.user_can_receive_push_event('10000000-0000-0000-0000-000000000002', (select id from private.notification_outbox where source_id = 'a0000000-0000-0000-0000-000000000123')),
+  false,
+  'inactive Teacher membership removes recipient before push claim'
+);
+update public.school_memberships set status = 'active' where id = 'a0000000-0000-0000-0000-000000000042';
+select set_config('request.jwt.claim.sub', '90000000-0000-0000-0000-000000000001', true);
+update public.schools set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000001';
+select extensions.is(
+  private.user_can_receive_push_event('10000000-0000-0000-0000-000000000002', (select id from private.notification_outbox where source_id = 'a0000000-0000-0000-0000-000000000123')),
+  false,
+  'inactive school removes every school recipient before push claim'
+);
+update public.schools set status = 'active' where id = 'a0000000-0000-0000-0000-000000000001';
+
+select extensions.ok(
+  pg_catalog.pg_get_functiondef('private.broadcast_message_change()'::regprocedure) like '%realtime.send(%message_changed%',
+  'message trigger sends a constant invalidation event'
+);
+select extensions.ok(
+  pg_catalog.pg_get_functiondef('private.broadcast_message_change()'::regprocedure) not like '%realtime.broadcast_changes%',
+  'message trigger no longer Broadcasts complete row records'
+);
+select extensions.ok(
+  pg_catalog.pg_get_functiondef('private.broadcast_message_change()'::regprocedure) not like '%new.body%',
+  'message Broadcast function never references message bodies'
+);
+select extensions.ok(
+  (select count(*) from public.audit_log where school_id = 'a0000000-0000-0000-0000-000000000001'
+    and entity_table in ('school_memberships', 'branches', 'classrooms', 'children', 'child_enrollments', 'child_guardians')) >= 6,
+  'security-relevant lifecycle changes are represented in the reduced audit log'
+);
 
 select * from extensions.finish();
 rollback;

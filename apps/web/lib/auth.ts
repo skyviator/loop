@@ -37,13 +37,16 @@ export async function getViewer(): Promise<Viewer | null> {
   }
 
   const school = await supabase.from("schools").select("name, timezone").eq("id", membership.school_id).maybeSingle();
+  if (!school.data) {
+    return { userId, role: null, membershipId: null, schoolId: null, schoolName: null, timezone: "Asia/Colombo" };
+  }
   return {
     userId,
     role: membership.role,
     membershipId: membership.id,
     schoolId: membership.school_id,
-    schoolName: school.data?.name ?? "School",
-    timezone: school.data?.timezone ?? "Asia/Colombo",
+    schoolName: school.data.name,
+    timezone: school.data.timezone,
   };
 }
 

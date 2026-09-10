@@ -277,11 +277,12 @@ export async function moveChildEnrollmentAction(formData: FormData) {
 }
 
 export async function updateMembershipAction(formData: FormData) {
-  const viewer = await requireViewer(["school_admin"]);
-  const { error } = await (await createClient()).from("school_memberships").update({
-    status: oneOf(formData.get("status"), ["active", "inactive", "archived"] as const, "Membership status"),
-  }).eq("school_id", viewer.schoolId!).eq("id", uuid(formData.get("membership_id"), "Membership"));
-  if (error) throw new Error(error.message);
+  await requireViewer(["school_admin"]);
+  const { error } = await (await createClient()).rpc("set_school_membership_status", {
+    target_membership_id: uuid(formData.get("membership_id"), "Membership"),
+    target_status: oneOf(formData.get("status"), ["active", "inactive", "archived"] as const, "Membership status"),
+  });
+  if (error) redirect(`/school?membershipError=${encodeURIComponent("The membership could not be changed. An active school must keep at least one School Admin.")}`);
   revalidatePath("/school");
 }
 
