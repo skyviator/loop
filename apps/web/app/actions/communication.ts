@@ -6,7 +6,7 @@ import { oneOf, requiredText, uuid } from "@loop/validation";
 
 import type { ActionState } from "@/app/actions/core";
 import { requireViewer } from "@/lib/auth";
-import { schedulePushDispatch } from "@/lib/push/schedule";
+import { schedulePushDispatch, waitUntilPushDispatch } from "@/lib/push/schedule";
 import { createClient } from "@/lib/supabase/server";
 
 function actionError(error: unknown, fallback: string): ActionState {
@@ -62,7 +62,7 @@ export async function sendMessageAction(_previous: ActionState, formData: FormDa
       body,
     });
     if (error) return { status: "error", message: "The message was not sent. Your access may have changed." };
-    schedulePushDispatch();
+    waitUntilPushDispatch();
     revalidatePath("/messages");
     return { status: "success", message: "Message sent." };
   } catch (error) {

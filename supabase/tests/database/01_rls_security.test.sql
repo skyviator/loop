@@ -550,6 +550,102 @@ select extensions.is(
   'successful push delivery reaches succeeded state'
 );
 select extensions.lives_ok(
+  format('select public.complete_push_delivery(%L::uuid, %L, 503)', (select id from pg_temp.claimed_push_delivery_ids where position = 3), 'temporary_failure'),
+  'temporary push failure is accepted for bounded retry'
+);
+select extensions.is(
+  (select status::text from private.push_deliveries where id = (select id from pg_temp.claimed_push_delivery_ids where position = 3)),
+  'temporary_failure',
+  'temporary push failure remains retryable without storing a response body'
+);
+select extensions.ok(
+  (select available_at > now() + interval '1 minute'
+    from private.push_deliveries where id = (select id from pg_temp.claimed_push_delivery_ids where position = 3)),
+  'temporary push failure receives exponential backoff before another claim'
+);
+
+update private.push_deliveries
+set available_at = now(), updated_at = now()
+where id = (select id from pg_temp.claimed_push_delivery_ids where position = 3);
+set local role service_role;
+select extensions.is(
+  (select count(*)::integer from public.claim_push_deliveries(25)),
+  1,
+  'a due temporary failure is reclaimed once'
+);
+select extensions.is(
+  (select count(*)::integer from public.claim_push_deliveries(25)),
+  0,
+  'an active delivery lease cannot be claimed by a concurrent worker'
+);
+reset role;
+select extensions.is(
+  (select attempts::integer from private.push_deliveries where id = (select id from pg_temp.claimed_push_delivery_ids where position = 3)),
+  2,
+  'each actual delivery claim increments the bounded attempt counter once'
+);
+
+update private.push_deliveries
+set updated_at = now() - interval '2 minutes 1 second'
+where id = (select id from pg_temp.claimed_push_delivery_ids where position = 3);
+set local role service_role;
+select extensions.is(
+  (select count(*)::integer from public.claim_push_deliveries(25)),
+  1,
+  'an abandoned delivery lease is atomically recovered and reclaimed'
+);
+reset role;
+select extensions.is(
+  (select attempts::integer from private.push_deliveries where id = (select id from pg_temp.claimed_push_delivery_ids where position = 3)),
+  3,
+  'stale lease recovery preserves attempt history before the next claim'
+);
+select extensions.is(
+  (select count(*)::integer
+    from private.push_deliveries delivery
+    where (delivery.outbox_id, delivery.subscription_id) = (
+      select expected.outbox_id, expected.subscription_id
+      from private.push_deliveries expected
+      where expected.id = (select id from pg_temp.claimed_push_delivery_ids where position = 3)
+    )),
+  1,
+  'stale lease recovery reuses the delivery row instead of duplicating it'
+);
+
+select extensions.lives_ok(
+  format('select public.complete_push_delivery(%L::uuid, %L, 503)', (select id from pg_temp.claimed_push_delivery_ids where position = 3), 'temporary_failure'),
+  'a recovered delivery can record another temporary provider failure'
+);
+set local role service_role;
+select extensions.is(
+  (select count(*)::integer from public.claim_push_deliveries(25)),
+  0,
+  'the scheduled worker cannot claim a retry before its new due time'
+);
+reset role;
+select extensions.ok(
+  (select available_at > now() + interval '7 minutes'
+    from private.push_deliveries where id = (select id from pg_temp.claimed_push_delivery_ids where position = 3)),
+  'recovered attempt receives the correct exponential retry backoff'
+);
+
+update private.push_deliveries
+set status = 'sending', attempts = 5, updated_at = now() - interval '2 minutes 1 second'
+where id = (select id from pg_temp.claimed_push_delivery_ids where position = 3);
+set local role service_role;
+select extensions.is(
+  (select count(*)::integer from public.claim_push_deliveries(25)),
+  0,
+  'a stale delivery at the retry limit is not sent again'
+);
+reset role;
+select extensions.is(
+  (select status::text from private.push_deliveries where id = (select id from pg_temp.claimed_push_delivery_ids where position = 3)),
+  'permanent_failure',
+  'a stale delivery at the retry limit reaches a terminal state'
+);
+
+select extensions.lives_ok(
   format('select public.complete_push_delivery(%L::uuid, %L, 410)', (select id from pg_temp.claimed_push_delivery_ids where position = 2), 'permanent_failure'),
   'HTTP 410 is handled as an expired permanent failure'
 );
@@ -558,14 +654,30 @@ select extensions.is(
   'inactive',
   'HTTP 404 or 410 handling deactivates the expired endpoint'
 );
+
+select extensions.is(
+  (select count(*)::integer from cron.job
+    where jobname = 'loop-push-retry-worker'
+      and schedule = '* * * * *'
+      and command = 'select private.invoke_push_retry_worker();'
+      and active),
+  1,
+  'one active every-minute push retry Cron job is installed'
+);
 select extensions.lives_ok(
-  format('select public.complete_push_delivery(%L::uuid, %L, 503)', (select id from pg_temp.claimed_push_delivery_ids where position = 3), 'temporary_failure'),
-  'temporary push failure is accepted for bounded retry'
+  'select private.invoke_push_retry_worker()',
+  'the local Cron helper exits safely when its Vault configuration is absent'
 );
 select extensions.is(
-  (select status::text from private.push_deliveries where id = (select id from pg_temp.claimed_push_delivery_ids where position = 3)),
-  'temporary_failure',
-  'temporary push failure remains retryable without storing a response body'
+  (select count(*)::integer from net.http_request_queue),
+  0,
+  'missing local Vault configuration does not enqueue an HTTP request'
+);
+select extensions.ok(
+  not has_function_privilege('anon', 'private.invoke_push_retry_worker()', 'execute')
+    and not has_function_privilege('authenticated', 'private.invoke_push_retry_worker()', 'execute')
+    and not has_function_privilege('service_role', 'private.invoke_push_retry_worker()', 'execute'),
+  'ordinary and application roles cannot invoke the private Cron helper'
 );
 reset role;
 select extensions.is(
