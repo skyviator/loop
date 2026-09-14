@@ -58,6 +58,8 @@ h3 { margin-bottom: .5rem; font-size: .95rem; }
 .button-secondary { border-color: var(--loop-border-strong); background: var(--loop-surface); color: var(--loop-text); }
 .button-secondary:hover { border-color: var(--loop-primary); color: var(--loop-primary-strong); }
 .button-accent { background: var(--loop-accent); color: var(--loop-text); }
+.button-danger { border-color: color-mix(in srgb, var(--loop-error) 35%, var(--loop-border)); background: var(--loop-surface); color: var(--loop-error); }
+.button-danger:hover { border-color: var(--loop-error); background: #f9eded; }
 
 .auth-page { display: flex; min-height: 100svh; flex-direction: column; align-items: center; justify-content: center; padding: 2rem 1rem; }
 .auth-card { width: min(100%, 27rem); text-align: center; }
@@ -130,6 +132,43 @@ h3 { margin-bottom: .5rem; font-size: .95rem; }
 .definition-list dd { margin: 0; font-size: .82rem; font-weight: 700; }
 .structure-row { display: grid; grid-template-columns: minmax(10rem, .5fr) 1fr; gap: 1rem; border-bottom: 1px solid var(--loop-border); padding: .75rem 0; font-size: .84rem; }
 .structure-row span { color: var(--loop-text-muted); }
+.structure-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(1.25rem, 3vw, 2rem); }
+.structure-section { min-width: 0; }
+.structure-section-heading { display: flex; min-height: 3.5rem; align-items: start; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--loop-border); padding-bottom: .75rem; }
+.structure-section-heading h3 { margin: 0; }
+.structure-section-heading p { margin: .2rem 0 0; color: var(--loop-text-muted); font-size: .75rem; line-height: 1.45; }
+.structure-section-heading > span { flex: none; color: var(--loop-text-muted); font-size: .75rem; font-weight: 700; }
+.structure-list { display: grid; }
+.structure-item { min-width: 0; border-bottom: 1px solid var(--loop-border); padding: 1rem 0; }
+.structure-item-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.structure-item-heading > div { min-width: 0; }
+.structure-item h4 { margin: 0; overflow-wrap: anywhere; font-size: .9rem; line-height: 1.4; }
+.structure-item-heading p, .structure-context { margin: .2rem 0 0; color: var(--loop-text-muted); font-size: .72rem; line-height: 1.45; overflow-wrap: anywhere; }
+.structure-context { margin-top: .6rem; }
+.structure-status { display: inline-flex; flex: none; align-items: center; gap: .4rem; color: var(--loop-text-muted); font-size: .72rem; font-weight: 700; }
+.structure-status::before { width: .5rem; height: .5rem; border-radius: 50%; background: var(--loop-border-strong); content: ""; }
+.structure-status[data-status="active"] { color: var(--loop-primary-strong); }
+.structure-status[data-status="active"]::before { background: var(--loop-success); }
+.structure-status[data-status="archived"]::before { background: var(--loop-text-muted); }
+.structure-item-actions { display: flex; min-height: 48px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .25rem .75rem; margin-top: .65rem; }
+.structure-editor { min-width: 0; flex: 1 1 8rem; }
+.structure-editor > summary { display: inline-flex; min-height: 48px; align-items: center; color: var(--loop-primary-strong); font-size: .78rem; font-weight: 700; cursor: pointer; }
+.structure-editor[open] { width: 100%; padding-bottom: .35rem; }
+.structure-editor[open] > summary { margin-bottom: .75rem; }
+.structure-editor[open] + .structure-status-form, .structure-editor[open] + .structure-danger-trigger, .structure-editor[open] + .structure-confirmation, .structure-editor[open] + .structure-action-note { display: none; }
+.structure-form-help, .structure-action-note { margin: -.35rem 0 0; color: var(--loop-text-muted); font-size: .72rem; line-height: 1.45; }
+.structure-action-note { margin: 0; text-align: right; }
+.structure-status-form { display: flex; justify-content: flex-end; }
+.structure-danger-trigger { flex: none; color: var(--loop-error); }
+.structure-confirmation { width: 100%; border-left: 3px solid var(--loop-error); background: #f9eded; padding: .85rem; }
+.structure-confirmation p { margin: 0; color: #783b3b; font-size: .78rem; line-height: 1.5; }
+.structure-confirmation-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .75rem; }
+.structure-empty { display: grid; min-height: 6.5rem; place-content: center; gap: .3rem; margin: 0; color: var(--loop-text-muted); text-align: center; }
+.structure-empty strong { color: var(--loop-text); font-size: .85rem; }
+.structure-empty span, .structure-prerequisite { font-size: .75rem; line-height: 1.5; }
+.structure-prerequisite { margin: 1rem 0 0; border-left: 3px solid var(--loop-accent); background: var(--loop-accent-soft); padding: .75rem .85rem; color: #70532c; }
+.structure-create > summary { min-height: 48px; }
+.structure-create form { max-width: 22rem; }
 .management-row { border-bottom: 1px solid var(--loop-border); }
 .management-row > summary { display: grid; min-height: 54px; grid-template-columns: minmax(8rem, 1fr) auto; align-items: center; gap: .3rem 1rem; color: var(--loop-text); font-size: .82rem; cursor: pointer; }
 .management-row > summary > span { grid-column: 1 / -1; color: var(--loop-text-muted); font-size: .72rem; }
@@ -336,6 +375,14 @@ progress { width: 100%; height: .55rem; border: 0; border-radius: 4px; overflow:
   .schedule-row { grid-template-columns: 3.5rem 6.5rem 1fr; gap: .5rem; }
   .schedule-row small { grid-column: 3; }
   .inline-management { grid-template-columns: 1fr; }
+  .structure-sections { grid-template-columns: 1fr; }
+  .structure-section + .structure-section { border-top: 1px solid var(--loop-border); padding-top: 1.25rem; }
+  .structure-item-actions { align-items: stretch; flex-direction: column; }
+  .structure-editor { width: 100%; flex: none; }
+  .structure-editor > summary { width: 100%; }
+  .structure-status-form, .structure-status-form .button, .structure-danger-trigger { width: 100%; }
+  .structure-confirmation-actions, .structure-confirmation-actions .structure-status-form, .structure-confirmation-actions .button { width: 100%; }
+  .structure-action-note { text-align: left; }
   .feature-entitlement-head { display: none; }
   .feature-entitlement-row { grid-template-columns: 1fr; gap: .4rem; padding: .75rem 0; }
   .attendance-row { grid-template-columns: 2.4rem minmax(0, 1fr) auto; }

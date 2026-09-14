@@ -1,9 +1,7 @@
 import {
   archiveTimetableExceptionAction,
   assignStaffAction,
-  createBranchAction,
   createChildAction,
-  createClassroomAction,
   createInvitationAction,
   createTimetableExceptionAction,
   createTimetableSlotAction,
@@ -15,15 +13,14 @@ import {
   setMediaConsentAction,
   setTeacherTimetablePermissionAction,
   updateAssignmentAction,
-  updateBranchAction,
   updateChildAction,
-  updateClassroomAction,
   updateGuardianLinkAction,
   updateMembershipAction,
   updateSchoolSettingsAction,
   updateTimetableSlotAction,
 } from "@/app/actions/core";
 import { AppShell, Stat, StatusNote } from "@/components/app-shell";
+import { SchoolStructureManagement } from "@/components/school-structure-management";
 import { requireViewer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -54,7 +51,7 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
     supabase.from("school_memberships").select("id, user_id, role, status, user_profiles(full_name)").eq("school_id", schoolId).order("role"),
     supabase.from("branches").select("id, name, status").eq("school_id", schoolId).order("name"),
     supabase.from("classrooms").select("id, branch_id, name, status").eq("school_id", schoolId).order("name"),
-    supabase.from("classroom_staff_assignments").select("id, classroom_id, membership_id, status, ends_on").eq("school_id", schoolId),
+    supabase.from("classroom_staff_assignments").select("id, classroom_id, membership_id, status, starts_on, ends_on").eq("school_id", schoolId),
     supabase.from("child_guardians").select("id, child_id, guardian_membership_id, relationship_label, is_primary, status").eq("school_id", schoolId),
     supabase.from("invitations").select("id, invited_email, invited_role, status, expires_at").eq("school_id", schoolId).order("created_at", { ascending: false }),
     supabase.from("school_feature_settings").select("feature_key, is_enabled").eq("school_id", schoolId),
@@ -82,16 +79,14 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
   const staffLimitReached = activeStaff.length >= (plan?.max_staff ?? Number.POSITIVE_INFINITY);
   const consentByChild = new Map(mediaConsents.data?.map((item) => [item.child_id, item]));
   const storageUsed = (storageUsage.data?.used_bytes ?? 0) + (storageUsage.data?.reserved_bytes ?? 0);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: viewer.timezone }).format(new Date());
 
   return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Overview" nav={nav}>
     {state.invite ? <StatusNote tone="success">Local-only invite URL: <a className="text-link break-all" href={state.invite}>{state.invite}</a></StatusNote> : null}
     {state.membershipError ? <StatusNote tone="warning">{state.membershipError}</StatusNote> : null}
     <section className="overview-band"><Stat value={activeChildren.length} label="active children" /><Stat value={activeStaff.length} label="active staff" /><Stat value={branches.data?.filter((item) => item.status === "active").length ?? 0} label="branches" /><Stat value={classrooms.data?.filter((item) => item.status === "active").length ?? 0} label="classrooms" /></section>
     <div className="content-grid">
-      <section id="classrooms" className="section-panel span-two"><div className="section-heading"><div><p className="eyebrow">Structure</p><h2>Branches and classrooms</h2></div></div>
-        {branches.data?.map((branch) => <details className="management-row" key={branch.id}><summary><strong>{branch.name}</strong><span>{branch.status} · {classrooms.data?.filter((room) => room.branch_id === branch.id).length ?? 0} classrooms</span></summary><form action={updateBranchAction} className="form-grid"><input type="hidden" name="branch_id" value={branch.id} /><label className="field"><span>Name</span><input name="name" defaultValue={branch.name} required /></label><label className="field"><span>Status</span><select name="status" defaultValue={branch.status}><option value="active">Active</option><option value="inactive">Inactive</option><option value="archived">Archived</option></select></label><button className="button button-secondary">Save branch</button></form>{classrooms.data?.filter((room) => room.branch_id === branch.id).map((room) => <form action={updateClassroomAction} className="inline-management" key={room.id}><input type="hidden" name="classroom_id" value={room.id} /><input type="text" aria-label={`${room.name} classroom name`} name="name" defaultValue={room.name} required /><select aria-label={`${room.name} branch`} name="branch_id" defaultValue={room.branch_id}>{branches.data?.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select aria-label={`${room.name} status`} name="status" defaultValue={room.status}><option value="active">Active</option><option value="inactive">Inactive</option><option value="archived">Archived</option></select><button className="text-button">Save classroom</button></form>)}</details>)}
-        <div className="inline-editors"><details className="editor"><summary>Add branch</summary><form action={createBranchAction} className="form-stack"><label className="field"><span>Name</span><input name="name" required /></label><button className="button button-secondary">Add branch</button></form></details><details className="editor"><summary>Add classroom</summary><form action={createClassroomAction} className="form-stack"><label className="field"><span>Branch</span><select name="branch_id">{branches.data?.filter((item) => item.status === "active").map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label><label className="field"><span>Name</span><input name="name" required /></label><button className="button button-secondary">Add classroom</button></form></details></div>
-      </section>
+      <SchoolStructureManagement branches={branches.data ?? []} classrooms={classrooms.data ?? []} assignments={assignments.data ?? []} enrollments={enrollments.data ?? []} today={today} />
 
       <section className="section-panel"><div className="section-heading"><h2>Plan usage</h2></div><p className="meta">{plan?.label ?? "Plan"}</p><label className="meter-label">Children <span>{activeChildren.length} / {plan?.max_active_children ?? 0}</span></label><progress max={plan?.max_active_children ?? 1} value={activeChildren.length} /><label className="meter-label">Staff <span>{activeStaff.length} / {plan?.max_staff ?? 0}</span></label><progress max={plan?.max_staff ?? 1} value={activeStaff.length} /><label className="meter-label">Private media <span>{(storageUsed / 1048576).toFixed(1)} / {((plan?.storage_allowance_bytes ?? 0) / 1048576).toFixed(0)} MB</span></label><progress max={plan?.storage_allowance_bytes || 1} value={storageUsed} />{childLimitReached ? <StatusNote tone="warning">The active-child limit has been reached. Archive a child who has left or ask Loop to change the plan.</StatusNote> : null}{staffLimitReached ? <StatusNote tone="warning">The active-staff limit has been reached. Deactivate a former staff membership or ask Loop to change the plan.</StatusNote> : null}</section>
 

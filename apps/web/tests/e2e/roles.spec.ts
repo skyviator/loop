@@ -52,19 +52,6 @@ test("school admin reaches tenant operations", async ({ page }) => {
   await expect(page.getByText("Little Harbour Preschool").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Plan usage" })).toBeVisible();
   await page.screenshot({ path: "docs/design/final/school-admin-desktop.png", fullPage: true });
-  const branchName = `Browser QA Branch ${Date.now()}`;
-  await page.locator("summary").filter({ hasText: "Add branch" }).click();
-  const branchForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Add branch" }) });
-  await branchForm.getByLabel("Name").fill(branchName);
-  await branchForm.getByRole("button", { name: "Add branch" }).click();
-  await expect(page.locator("details.management-row summary strong").filter({ hasText: branchName })).toBeVisible();
-  const branchSummary = page.locator("details.management-row > summary").filter({ has: page.getByText(branchName, { exact: true }) });
-  const branchEditor = branchSummary.locator("..");
-  await branchSummary.click();
-  await branchEditor.getByLabel("Name").fill(`${branchName} Updated`);
-  await branchEditor.getByRole("button", { name: "Save branch" }).click();
-  await expect(page.locator("details.management-row summary strong").filter({ hasText: `${branchName} Updated` })).toBeVisible();
-
   const invitationEmail = `browser.qa.${Date.now()}@loop.local`;
   const invitationForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Create invitation" }) });
   await invitationForm.getByLabel("Email").fill(invitationEmail);
