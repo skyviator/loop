@@ -34,8 +34,10 @@ describe("push retry worker route", () => {
     vi.clearAllMocks();
   });
 
-  it("has no GET handler and accepts only the dedicated worker credential", async () => {
-    expect("GET" in route).toBe(false);
+  it("rejects GET without caching and accepts only the dedicated worker credential", async () => {
+    const get = route.GET();
+    expect(get.status).toBe(405);
+    expect(get.headers.get("cache-control")).toContain("no-store");
 
     const missing = await route.POST(request({ cookie: "authenticated-user=session" }));
     const wrong = await route.POST(request({ authorization: "Bearer wrong-worker-value" }));

@@ -29,6 +29,10 @@ function response(body: { ok: boolean }, status: number) {
   return NextResponse.json(body, { status, headers: RESPONSE_HEADERS });
 }
 
+export function GET() {
+  return response({ ok: false }, 405);
+}
+
 export async function POST(request: Request) {
   if (!authorized(request)) return response({ ok: false }, 401);
 
