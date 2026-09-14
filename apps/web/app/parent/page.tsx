@@ -47,20 +47,20 @@ export default async function ParentPage({ searchParams }: { searchParams: Promi
   const viewer = await requireViewer(["guardian"]);
   const state = await searchParams;
   const supabase = await createClient();
-  const links = await supabase.from("child_guardians").select("child_id, is_primary, children(id, preferred_name)").eq("guardian_membership_id", viewer.membershipId!).eq("status", "active").order("is_primary", { ascending: false }).order("created_at");
+  const links = await supabase.from("child_guardians").select("child_id, is_primary, children(id, preferred_name, child_enrollments(id, classroom_id, status))").eq("guardian_membership_id", viewer.membershipId!).eq("status", "active").order("is_primary", { ascending: false }).order("created_at");
   const selectedLink = links.data?.find((link) => link.child_id === state.child) ?? links.data?.[0];
   if (!selectedLink) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={guardianNavigation} contentWidth="standard"><StatusNote tone="warning">No child is linked to this guardian account. Ask the school administrator to review the guardian link.</StatusNote></AppShell>;
   const childId = selectedLink.child_id;
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: viewer.timezone }).format(new Date());
   const weekday = new Date(`${today}T00:00:00+05:30`).getUTCDay() || 7;
-  const enrollment = await supabase.from("child_enrollments").select("id, classroom_id").eq("child_id", childId).eq("status", "active").maybeSingle();
-  if (!enrollment.data) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={guardianNavigation} contentWidth="standard"><StatusNote tone="warning">This child does not have an active classroom enrollment.</StatusNote></AppShell>;
+  const enrollment = selectedLink.children?.child_enrollments.find((item) => item.status === "active");
+  if (!enrollment) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={guardianNavigation} contentWidth="standard"><StatusNote tone="warning">This child does not have an active classroom enrollment.</StatusNote></AppShell>;
 
   const [attendance, care, slots, exceptions, photoLinks] = await Promise.all([
     supabase.from("attendance_records").select("id, status, checked_in_at, checked_out_at").eq("child_id", childId).eq("service_date", today).maybeSingle(),
     supabase.from("care_events").select("id, category, status, recorded_at, started_at, ended_at, outcome_code, meal_outcome, quantity, unit, note, timetable_slot_id").eq("child_id", childId).gte("recorded_at", `${today}T00:00:00+05:30`).lt("recorded_at", `${today}T23:59:59+05:30`).order("recorded_at"),
-    supabase.from("timetable_slots").select("id, title, start_time, end_time, care_feature_key").eq("classroom_id", enrollment.data.classroom_id).eq("day_of_week", weekday).eq("status", "active").order("start_time"),
-    supabase.from("timetable_exceptions").select("timetable_slot_id, kind, replacement_title, replacement_start_time, replacement_end_time").eq("classroom_id", enrollment.data.classroom_id).eq("service_date", today).eq("status", "active"),
+    supabase.from("timetable_slots").select("id, title, start_time, end_time, care_feature_key").eq("classroom_id", enrollment.classroom_id).eq("day_of_week", weekday).eq("status", "active").order("start_time"),
+    supabase.from("timetable_exceptions").select("timetable_slot_id, kind, replacement_title, replacement_start_time, replacement_end_time").eq("classroom_id", enrollment.classroom_id).eq("service_date", today).eq("status", "active"),
     supabase.from("media_asset_children").select("asset_id, media_assets(id, caption, created_at, status)").eq("child_id", childId).order("created_at", { referencedTable: "media_assets", ascending: false }).limit(12),
   ]);
   const exceptionBySlot = new Map(exceptions.data?.filter((item) => item.timetable_slot_id).map((item) => [item.timetable_slot_id, item]));

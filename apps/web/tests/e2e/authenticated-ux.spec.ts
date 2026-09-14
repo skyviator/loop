@@ -129,6 +129,39 @@ test("Guardian navigation is consistent and message deep links remain valid", as
   await expect(page.getByRole("navigation", { name: "Primary" }).locator('[aria-current="page"]')).toHaveText("Messages");
 });
 
+test("Authenticated navigation gives immediate feedback while private data remains uncached", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page, "guardian");
+  await page.goto("/parent");
+  await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
+
+  let releaseResponse: () => void = () => undefined;
+  const responseGate = new Promise<void>((resolve) => { releaseResponse = resolve; });
+  let markIntercepted: () => void = () => undefined;
+  const intercepted = new Promise<void>((resolve) => { markIntercepted = resolve; });
+  await page.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    const headers = route.request().headers();
+    const isPrefetch = headers["next-router-prefetch"] !== undefined || headers.purpose === "prefetch";
+    if (url.pathname === "/messages" && url.searchParams.has("_rsc") && !isPrefetch) {
+      markIntercepted();
+      await responseGate;
+    }
+    await route.continue();
+  });
+
+  const messagesLink = page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Messages", exact: true });
+  const navigation = messagesLink.click();
+  await intercepted;
+  await expect(page.locator(".app-frame")).toBeVisible();
+  await expect(page.locator('.route-loading, a.nav-link[href="/messages"][data-pending="true"]')).toBeVisible();
+  releaseResponse();
+  await navigation;
+  await expect(page).toHaveURL(/\/messages$/);
+  await expect(page.locator(".route-loading")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Messages" })).toBeVisible();
+});
+
 test("Teacher active navigation follows Today, Attendance, and Record care", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await signIn(page, "teacher");

@@ -21,7 +21,7 @@ export async function getViewer(): Promise<Viewer | null> {
 
   const [platform, memberships] = await Promise.all([
     supabase.from("platform_administrators").select("user_id").eq("user_id", userId).eq("status", "active").maybeSingle(),
-    supabase.from("school_memberships").select("id, school_id, role").eq("user_id", userId).eq("status", "active"),
+    supabase.from("school_memberships").select("id, school_id, role, schools(name, timezone)").eq("user_id", userId).eq("status", "active"),
   ]);
 
   if (platform.data) {
@@ -36,8 +36,7 @@ export async function getViewer(): Promise<Viewer | null> {
     return { userId, role: null, membershipId: null, schoolId: null, schoolName: null, timezone: "Asia/Colombo" };
   }
 
-  const school = await supabase.from("schools").select("name, timezone").eq("id", membership.school_id).maybeSingle();
-  if (!school.data) {
+  if (!membership.schools) {
     return { userId, role: null, membershipId: null, schoolId: null, schoolName: null, timezone: "Asia/Colombo" };
   }
   return {
@@ -45,8 +44,8 @@ export async function getViewer(): Promise<Viewer | null> {
     role: membership.role,
     membershipId: membership.id,
     schoolId: membership.school_id,
-    schoolName: school.data.name,
-    timezone: school.data.timezone,
+    schoolName: membership.schools.name,
+    timezone: membership.schools.timezone,
   };
 }
 

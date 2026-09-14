@@ -14,16 +14,23 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
   const feature = await supabase.from("school_feature_settings").select("is_enabled").eq("school_id", viewer.schoolId!).eq("feature_key", "messaging").maybeSingle();
   if (!feature.data?.is_enabled) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Messages" nav={communicationNavigation(viewer.role!)} contentWidth="wide"><StatusNote tone="warning">Messaging is not enabled for this school.</StatusNote></AppShell>;
 
-  const [threads, reads, guardianLinks] = await Promise.all([
+  const requestedThreadId = typeof state.thread === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(state.thread) ? state.thread : null;
+  let requestedMessages = requestedThreadId ? supabase.from("messages").select("id, body, created_at, sender_user_id, sender_membership_id").eq("thread_id", requestedThreadId).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(30) : null;
+  if (requestedMessages && state.before) requestedMessages = requestedMessages.lt("created_at", state.before);
+  const [threads, reads, guardianLinks, requestedMessageResult] = await Promise.all([
     supabase.from("message_threads").select("id, child_id, guardian_membership_id, updated_at, children(preferred_name)").eq("status", "active").order("updated_at", { ascending: false }).limit(50),
     supabase.from("message_thread_reads").select("thread_id, last_read_at").eq("membership_id", viewer.membershipId!),
     viewer.role === "guardian" ? supabase.from("child_guardians").select("child_id, children(preferred_name)").eq("guardian_membership_id", viewer.membershipId!).eq("status", "active") : Promise.resolve({ data: [] }),
+    requestedMessages ?? Promise.resolve({ data: [] }),
   ]);
   const readAt = new Map(reads.data?.map((item) => [item.thread_id, item.last_read_at]));
   const selected = threads.data?.find((thread) => thread.id === state.thread) ?? threads.data?.[0];
-  let messages = selected ? supabase.from("messages").select("id, body, created_at, sender_user_id, sender_membership_id").eq("thread_id", selected.id).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(30) : null;
-  if (messages && state.before) messages = messages.lt("created_at", state.before);
-  const messageResult = messages ? await messages : { data: [] };
+  let messageResult = requestedThreadId && selected?.id === requestedThreadId ? requestedMessageResult : { data: [] as typeof requestedMessageResult.data };
+  if (selected && selected.id !== requestedThreadId) {
+    let messages = supabase.from("messages").select("id, body, created_at, sender_user_id, sender_membership_id").eq("thread_id", selected.id).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(30);
+    if (state.before) messages = messages.lt("created_at", state.before);
+    messageResult = await messages;
+  }
   const orderedMessages = [...(messageResult.data ?? [])].reverse();
   const existingChildren = new Set(threads.data?.map((thread) => thread.child_id));
 

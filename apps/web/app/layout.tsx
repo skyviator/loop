@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import type { ReactNode } from "react";
 
+import { AppShellStateProvider } from "@/components/app-shell-state";
 import { PwaProvider } from "@/components/pwa-provider";
 
 import "./globals.css";
@@ -36,7 +37,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en" className={manrope.variable}>
-      <body className="font-sans antialiased"><PwaProvider>{children}</PwaProvider></body>
+      <body className="font-sans antialiased"><PwaProvider><AppShellStateProvider>{children}</AppShellStateProvider></PwaProvider></body>
     </html>
   );
 }

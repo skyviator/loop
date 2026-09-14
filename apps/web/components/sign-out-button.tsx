@@ -3,13 +3,16 @@
 import { useRef, useState, type FormEvent } from "react";
 
 import { signOutAction } from "@/app/actions/auth";
+import { useForgetAppShell } from "@/components/app-shell-state";
 import { LoopIcon } from "@/components/loop-icon";
 
 export function SignOutButton({ mobile = false }: { mobile?: boolean }) {
   const ready = useRef(false);
   const [busy, setBusy] = useState(false);
+  const forgetAppShell = useForgetAppShell();
 
   async function prepareSignOut(event: FormEvent<HTMLFormElement>) {
+    forgetAppShell();
     if (ready.current || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
     const form = event.currentTarget;
     event.preventDefault();

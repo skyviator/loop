@@ -11,15 +11,19 @@ import { LoopIcon } from "./loop-icon";
 export function PrimaryNavigation({ items }: { items: readonly NavItem[] }) {
   const pathname = usePathname();
   const [hash, setHash] = useState("");
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
 
   useEffect(() => {
-    const syncHash = () => setHash(window.location.hash);
-    syncHash();
-    window.addEventListener("hashchange", syncHash);
-    window.addEventListener("popstate", syncHash);
+    const syncLocation = () => {
+      setHash(window.location.hash);
+      setPendingHref(null);
+    };
+    syncLocation();
+    window.addEventListener("hashchange", syncLocation);
+    window.addEventListener("popstate", syncLocation);
     return () => {
-      window.removeEventListener("hashchange", syncHash);
-      window.removeEventListener("popstate", syncHash);
+      window.removeEventListener("hashchange", syncLocation);
+      window.removeEventListener("popstate", syncLocation);
     };
   }, [pathname]);
 
@@ -27,8 +31,12 @@ export function PrimaryNavigation({ items }: { items: readonly NavItem[] }) {
     <nav aria-label="Primary">
       {items.map((item) => {
         const active = isNavigationItemActive(item.href, items, pathname, hash);
+        const destinationPathname = item.href.split(/[?#]/, 1)[0];
         return (
-          <Link key={item.href} href={item.href} className="nav-link" aria-current={active ? "page" : undefined} onNavigate={() => setHash(item.href.includes("#") ? `#${item.href.split("#", 2)[1]}` : "")}>
+          <Link key={item.href} href={item.href} className="nav-link" aria-current={active ? "page" : undefined} aria-busy={pendingHref === item.href} data-pending={pendingHref === item.href ? "true" : undefined} onNavigate={() => {
+            setHash(item.href.includes("#") ? `#${item.href.split("#", 2)[1]}` : "");
+            setPendingHref(destinationPathname !== pathname ? item.href : null);
+          }}>
             <LoopIcon name={item.icon} className="size-5" />
             <span>{item.label}</span>
           </Link>
