@@ -1,21 +1,17 @@
 import {
   archiveTimetableExceptionAction,
-  assignStaffAction,
-  createInvitationAction,
   createTimetableExceptionAction,
   createTimetableSlotAction,
-  revokeInvitationAction,
   setFeatureAction,
   setCommunicationPermissionsAction,
   setTeacherTimetablePermissionAction,
-  updateAssignmentAction,
-  updateMembershipAction,
   updateSchoolSettingsAction,
   updateTimetableSlotAction,
 } from "@/app/actions/core";
 import { AppShell, Stat, StatusNote } from "@/components/app-shell";
 import { ChildGuardianManagement } from "@/components/child-guardian-management";
 import { SchoolStructureManagement } from "@/components/school-structure-management";
+import { StaffManagement } from "@/components/staff-management";
 import { requireViewer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -33,7 +29,7 @@ const nav = [
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-export default async function SchoolPage({ searchParams }: { searchParams: Promise<{ invite?: string; membershipError?: string }> }) {
+export default async function SchoolPage({ searchParams }: { searchParams: Promise<{ invite?: string; membershipError?: string; staffError?: string }> }) {
   const viewer = await requireViewer(["school_admin"]);
   const state = await searchParams;
   const supabase = await createClient();
@@ -62,7 +58,6 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
   const plan = plans.data?.find((item) => item.id === school.data?.plan_id);
   const activeChildren = children.data?.filter((item) => item.status === "active") ?? [];
   const activeStaff = memberships.data?.filter((item) => item.status === "active" && item.role !== "guardian") ?? [];
-  const teacherMemberships = memberships.data?.filter((item) => item.role === "teacher" && item.status === "active") ?? [];
   const enabled = new Map(settings.data?.map((item) => [item.feature_key, item.is_enabled]));
   const allowed = new Map(planFeatures.data?.filter((item) => item.plan_id === plan?.id).map((item) => [item.feature_key, item.is_allowed]));
   const classroomName = new Map(classrooms.data?.map((item) => [item.id, item.name]));
@@ -70,10 +65,19 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
   const staffLimitReached = activeStaff.length >= (plan?.max_staff ?? Number.POSITIVE_INFINITY);
   const storageUsed = (storageUsage.data?.used_bytes ?? 0) + (storageUsage.data?.reserved_bytes ?? 0);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: viewer.timezone }).format(new Date());
+  const invitationClock = new Date().toISOString();
+  const localInviteUrl = state.invite && /^http:\/\/127\.0\.0\.1:3000\/invite\?token=[A-Za-z0-9_-]+$/.test(state.invite) ? state.invite : null;
+  const invitationCreated = Boolean(localInviteUrl) || state.invite === "Invitation created. Production email delivery is not configured in this step.";
+  const staffError = state.staffError === "A pending staff invitation already exists for this email. Revoke it before creating another."
+    || state.staffError === "The staff invitation could not be created." ? state.staffError : null;
+  const membershipError = state.membershipError === "This is the final active School Admin. Add or reactivate another School Admin before deactivating this membership."
+    || state.membershipError === "The staff membership could not be changed. Check that the school and your access are active." ? state.membershipError : null;
+  const branchActive = new Map(branches.data?.map((branch) => [branch.id, branch.status === "active"]));
 
   return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Overview" nav={nav}>
-    {state.invite ? <StatusNote tone="success">Local-only invite URL: <a className="text-link break-all" href={state.invite}>{state.invite}</a></StatusNote> : null}
-    {state.membershipError ? <StatusNote tone="warning">{state.membershipError}</StatusNote> : null}
+    {invitationCreated ? <StatusNote tone="success">{localInviteUrl ? <>Local-only invite URL: <a className="text-link break-all" href={localInviteUrl}>{localInviteUrl}</a></> : "Invitation created. Production email delivery is not configured in this step."}</StatusNote> : null}
+    {membershipError ? <StatusNote tone="warning">{membershipError}</StatusNote> : null}
+    {staffError ? <StatusNote tone="warning">{staffError}</StatusNote> : null}
     <section className="overview-band"><Stat value={activeChildren.length} label="active children" /><Stat value={activeStaff.length} label="active staff" /><Stat value={branches.data?.filter((item) => item.status === "active").length ?? 0} label="branches" /><Stat value={classrooms.data?.filter((item) => item.status === "active").length ?? 0} label="classrooms" /></section>
     <div className="content-grid">
       <SchoolStructureManagement branches={branches.data ?? []} classrooms={classrooms.data ?? []} assignments={assignments.data ?? []} enrollments={enrollments.data ?? []} today={today} />
@@ -92,9 +96,14 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
         childLimitReached={childLimitReached}
       />
 
-      <section className="section-panel"><div className="section-heading"><h2>Staff</h2></div>{memberships.data?.filter((item) => item.role !== "guardian").map((item) => <details className="management-row" key={item.id}><summary><strong>{item.user_profiles?.full_name ?? item.role}</strong><span>{item.role.replace("_", " ")} · {item.status}</span></summary><form action={updateMembershipAction} className="form-stack"><input type="hidden" name="membership_id" value={item.id} /><label className="field"><span>Membership</span><select name="status" defaultValue={item.status}><option value="active">Active</option><option value="inactive">Inactive</option><option value="archived">Archived</option></select></label><button className="button button-secondary">Save membership</button></form>{assignments.data?.filter((assignment) => assignment.membership_id === item.id).map((assignment) => <form action={updateAssignmentAction} className="inline-management" key={assignment.id}><input type="hidden" name="assignment_id" value={assignment.id} /><span>{classroomName.get(assignment.classroom_id)}</span><select aria-label="Assignment status" name="status" defaultValue={assignment.status}><option value="active">Assigned</option><option value="inactive">Unassigned</option></select><button className="text-button">Save</button></form>)}</details>)}<details className="editor"><summary>Assign teacher</summary><form action={assignStaffAction} className="form-stack"><label className="field"><span>Teacher</span><select name="membership_id">{teacherMemberships.map((item) => <option key={item.id} value={item.id}>{item.user_profiles?.full_name ?? "Teacher"}</option>)}</select></label><label className="field"><span>Classroom</span><select name="classroom_id">{classrooms.data?.filter((item) => item.status === "active").map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label><button className="button button-secondary">Assign</button></form></details></section>
-
-      <section className="section-panel"><div className="section-heading"><h2>Invitations</h2></div><form action={createInvitationAction} className="form-stack"><label className="field"><span>Email</span><input type="email" name="email" required /></label><label className="field"><span>Role</span><select name="role"><option value="teacher">Teacher</option><option value="guardian">Guardian</option><option value="school_admin">School admin</option></select></label><button className="button button-accent">Create invitation</button></form>{invitations.data?.slice(0, 8).map((invite) => <div className="person-row" key={invite.id}><span>{invite.invited_email}<small>{invite.invited_role} · {invite.status}</small></span>{invite.status === "pending" ? <form action={revokeInvitationAction}><input type="hidden" name="invitation_id" value={invite.id} /><button className="text-button">Revoke</button></form> : null}</div>)}</section>
+      <StaffManagement
+        staff={(memberships.data ?? []).filter((item) => item.role !== "guardian").map((item) => ({ id: item.id, name: item.user_profiles?.full_name ?? "Staff member", role: item.role === "teacher" ? "teacher" as const : "school_admin" as const, status: item.status }))}
+        classrooms={(classrooms.data ?? []).map((room) => ({ id: room.id, name: room.name, status: room.status, branchActive: branchActive.get(room.branch_id) ?? false }))}
+        assignments={assignments.data ?? []}
+        invitations={(invitations.data ?? []).filter((invite) => invite.invited_role !== "guardian").map((invite) => ({ id: invite.id, invited_email: invite.invited_email, invited_role: invite.invited_role === "teacher" ? "teacher" as const : "school_admin" as const, status: invite.status, expires_at: invite.expires_at }))}
+        clock={invitationClock}
+        today={today}
+      />
 
       <section id="timetable" className="section-panel span-two"><div className="section-heading"><div><p className="eyebrow">Recurring week</p><h2>Timetable</h2></div></div><div className="schedule-list">{slots.data?.map((slot) => <details className="management-row" key={slot.id}><summary><time>{weekdays[slot.day_of_week - 1]} {slot.start_time.slice(0, 5)}–{slot.end_time.slice(0, 5)}</time><strong>{slot.title}</strong><span>{classroomName.get(slot.classroom_id)} · {slot.status}</span></summary><form action={updateTimetableSlotAction} className="form-grid"><input type="hidden" name="slot_id" value={slot.id} /><label className="field"><span>Day</span><select name="day_of_week" defaultValue={slot.day_of_week}>{weekdays.map((day, index) => <option value={index + 1} key={day}>{day}</option>)}</select></label><label className="field"><span>Start</span><input name="start_time" type="time" defaultValue={slot.start_time.slice(0, 5)} required /></label><label className="field"><span>End</span><input name="end_time" type="time" defaultValue={slot.end_time.slice(0, 5)} required /></label><label className="field"><span>Activity</span><input name="title" defaultValue={slot.title} required /></label><label className="field"><span>Status</span><select name="status" defaultValue={slot.status}><option value="active">Active</option><option value="inactive">Inactive</option><option value="archived">Archived</option></select></label><button className="button button-secondary">Save activity</button></form></details>)}</div><div className="inline-editors"><details className="editor"><summary>Add recurring activity</summary><form action={createTimetableSlotAction} className="form-grid"><label className="field"><span>Classroom</span><select name="classroom_id">{classrooms.data?.filter((item) => item.status === "active").map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label><label className="field"><span>Day</span><select name="day_of_week">{weekdays.map((day, index) => <option key={day} value={index + 1}>{day}</option>)}</select></label><label className="field"><span>Start</span><input name="start_time" type="time" required /></label><label className="field"><span>End</span><input name="end_time" type="time" required /></label><label className="field"><span>Activity</span><input name="title" required /></label><label className="field"><span>Linked care</span><select name="care_feature_key"><option value="">None</option>{catalogue.data?.filter((item) => item.category === "care" && item.status === "active" && allowed.get(item.key)).map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label><button className="button button-primary">Add activity</button></form></details><details className="editor"><summary>Add date exception</summary><form action={createTimetableExceptionAction} className="form-grid"><label className="field"><span>Classroom</span><select name="classroom_id">{classrooms.data?.filter((item) => item.status === "active").map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label><label className="field"><span>Date</span><input type="date" name="service_date" required /></label><label className="field"><span>Type</span><select name="kind"><option value="cancelled">Cancelled</option><option value="changed">Changed</option><option value="additional">Additional</option></select></label><label className="field"><span>Existing slot</span><select name="timetable_slot_id"><option value="">Choose slot</option>{slots.data?.filter((item) => item.status === "active").map((slot) => <option key={slot.id} value={slot.id}>{slot.title}</option>)}</select></label><label className="field"><span>Additional title</span><input name="replacement_title" /></label><label className="field"><span>Start</span><input name="replacement_start_time" type="time" /></label><label className="field"><span>End</span><input name="replacement_end_time" type="time" /></label><label className="field"><span>Reason</span><input name="reason" /></label><button className="button button-secondary">Add exception</button></form></details></div>{exceptions.data?.map((item) => <div className="person-row" key={item.id}><span>{item.service_date} · {item.kind}<small>{item.replacement_title ?? item.reason ?? "Timetable activity"} · {item.status}</small></span>{item.status === "active" ? <form action={archiveTimetableExceptionAction}><input type="hidden" name="exception_id" value={item.id} /><button className="text-button">Archive</button></form> : null}</div>)}</section>
 

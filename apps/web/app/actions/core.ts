@@ -123,10 +123,20 @@ export async function assignStaffAction(formData: FormData) {
   const viewer = await requireViewer(["school_admin"]);
   const membershipId = uuid(formData.get("membership_id"), "Staff member");
   const classroomId = uuid(formData.get("classroom_id"), "Classroom");
-  const { error } = await (await createClient()).from("classroom_staff_assignments").insert({
+  const supabase = await createClient();
+  const [membership, classroom, existing] = await Promise.all([
+    supabase.from("school_memberships").select("id, role, status").eq("school_id", viewer.schoolId!).eq("id", membershipId).maybeSingle(),
+    supabase.from("classrooms").select("id, status, branches(status)").eq("school_id", viewer.schoolId!).eq("id", classroomId).maybeSingle(),
+    supabase.from("classroom_staff_assignments").select("id").eq("school_id", viewer.schoolId!).eq("membership_id", membershipId).eq("classroom_id", classroomId).eq("status", "active").limit(1),
+  ]);
+  if (membership.error || classroom.error || existing.error) throw new Error("Classroom assignment could not be checked.");
+  if (membership.data?.role !== "teacher" || membership.data.status !== "active") throw new Error("Reactivate this Teacher's school access before assigning a classroom.");
+  if (classroom.data?.status !== "active" || classroom.data.branches?.status !== "active") throw new Error("Choose an active classroom in an active branch.");
+  if (existing.data?.length) throw new Error("This Teacher is already assigned to that classroom.");
+  const { error } = await supabase.from("classroom_staff_assignments").insert({
     school_id: viewer.schoolId!, membership_id: membershipId, classroom_id: classroomId,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(error.code === "23505" ? "This classroom already has an assignment for the Teacher on this date. Restore the existing row if needed." : "The Teacher could not be assigned to this classroom.");
   revalidatePath("/school");
 }
 
@@ -162,6 +172,27 @@ export async function createInvitationAction(formData: FormData) {
   const isLocal = process.env.NODE_ENV === "development" && /^http:\/\/(127\.0\.0\.1|localhost):54321$/.test(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "");
   const message = isLocal ? `http://127.0.0.1:3000/invite?token=${token}` : "Invitation created. Production email delivery is not configured in this step.";
   redirect(`${returnTo}?invite=${encodeURIComponent(message)}`);
+}
+
+export async function createStaffInvitationAction(formData: FormData) {
+  const viewer = await requireViewer(["school_admin"]);
+  const role = oneOf(formData.get("role"), ["teacher", "school_admin"] as const, "Staff role");
+  const email = emailAddress(formData.get("email"));
+  const token = randomBytes(24).toString("base64url");
+  const tokenHash = `\\x${createHash("sha256").update(token).digest("hex")}`;
+  const { error } = await (await createClient()).from("invitations").insert({
+    school_id: viewer.schoolId!, invited_email: email, invited_role: role, token_hash: tokenHash,
+    expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(), invited_by_user_id: viewer.userId,
+  });
+  if (error) {
+    const message = error.code === "23505"
+      ? "A pending staff invitation already exists for this email. Revoke it before creating another."
+      : "The staff invitation could not be created.";
+    redirect(`/school?staffError=${encodeURIComponent(message)}#staff-invitations`);
+  }
+  const isLocal = process.env.NODE_ENV === "development" && /^http:\/\/(127\.0\.0\.1|localhost):54321$/.test(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "");
+  const message = isLocal ? `http://127.0.0.1:3000/invite?token=${token}` : "Invitation created. Production email delivery is not configured in this step.";
+  redirect(`/school?invite=${encodeURIComponent(message)}#staff-invitations`);
 }
 
 export async function revokeInvitationAction(formData: FormData) {
@@ -278,18 +309,36 @@ export async function updateMembershipAction(formData: FormData) {
     target_membership_id: uuid(formData.get("membership_id"), "Membership"),
     target_status: oneOf(formData.get("status"), ["active", "inactive", "archived"] as const, "Membership status"),
   });
-  if (error) redirect(`/school?membershipError=${encodeURIComponent("The membership could not be changed. An active school must keep at least one School Admin.")}`);
+  if (error) {
+    const message = error.message.includes("at least one active School Admin")
+      ? "This is the final active School Admin. Add or reactivate another School Admin before deactivating this membership."
+      : "The staff membership could not be changed. Check that the school and your access are active.";
+    redirect(`/school?membershipError=${encodeURIComponent(message)}#staff`);
+  }
   revalidatePath("/school");
 }
 
 export async function updateAssignmentAction(formData: FormData) {
   const viewer = await requireViewer(["school_admin"]);
-  const active = formData.get("status") === "active";
-  const { error } = await (await createClient()).from("classroom_staff_assignments").update({
+  const active = oneOf(formData.get("status"), ["active", "inactive"] as const, "Assignment status") === "active";
+  const assignmentId = uuid(formData.get("assignment_id"), "Assignment");
+  const supabase = await createClient();
+  if (active) {
+    const assignment = await supabase.from("classroom_staff_assignments").select("membership_id, classroom_id").eq("school_id", viewer.schoolId!).eq("id", assignmentId).maybeSingle();
+    if (assignment.error || !assignment.data) throw new Error("This classroom assignment is not available.");
+    const [membership, classroom] = await Promise.all([
+      supabase.from("school_memberships").select("role, status").eq("school_id", viewer.schoolId!).eq("id", assignment.data.membership_id).maybeSingle(),
+      supabase.from("classrooms").select("status, branches(status)").eq("school_id", viewer.schoolId!).eq("id", assignment.data.classroom_id).maybeSingle(),
+    ]);
+    if (membership.error || classroom.error || membership.data?.role !== "teacher" || membership.data.status !== "active" || classroom.data?.status !== "active" || classroom.data.branches?.status !== "active") {
+      throw new Error("Reactivate the Teacher and classroom before restoring this assignment.");
+    }
+  }
+  const { data, error } = await supabase.from("classroom_staff_assignments").update({
     status: active ? "active" : "inactive",
     ends_on: active ? null : localDate(viewer.timezone),
-  }).eq("school_id", viewer.schoolId!).eq("id", uuid(formData.get("assignment_id"), "Assignment"));
-  if (error) throw new Error(error.message);
+  }).eq("school_id", viewer.schoolId!).eq("id", assignmentId).select("id").maybeSingle();
+  if (error || !data) throw new Error(active ? "Reactivate the Teacher membership before restoring this assignment, and check that the classroom is active." : "The classroom assignment could not be changed.");
   revalidatePath("/school");
 }
 

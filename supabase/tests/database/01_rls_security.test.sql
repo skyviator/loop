@@ -986,8 +986,65 @@ select pg_temp.throws_any(
   'school admin cannot directly move a membership between tenants'
 );
 select extensions.lives_ok(
+  $$insert into public.classroom_staff_assignments (id, school_id, classroom_id, membership_id)
+    values ('a0000000-0000-0000-0000-000000000046', 'a0000000-0000-0000-0000-000000000001',
+      'a0000000-0000-0000-0000-000000000021', 'a0000000-0000-0000-0000-000000000042')$$,
+  'an active Teacher can be assigned to a second same-school classroom'
+);
+select extensions.lives_ok(
   $$select public.set_school_membership_status('a0000000-0000-0000-0000-000000000042', 'inactive')$$,
   'school admin can deactivate a same-school teacher through the narrow status RPC'
+);
+select extensions.lives_ok(
+  $$update public.classroom_staff_assignments set status = 'inactive', ends_on = current_date
+    where id = 'a0000000-0000-0000-0000-000000000046'$$,
+  'school admin can revoke an existing assignment after Teacher membership deactivation'
+);
+select extensions.is(
+  (select status::text from public.classroom_staff_assignments where id = 'a0000000-0000-0000-0000-000000000046'),
+  'inactive',
+  'revoked classroom assignment retains its history row'
+);
+select pg_temp.throws_any(
+  $$update public.classroom_staff_assignments set status = 'inactive',
+      classroom_id = 'b0000000-0000-0000-0000-000000000020'
+    where id = 'a0000000-0000-0000-0000-000000000046'$$,
+  'deactivation cannot move the protected classroom identity across schools'
+);
+select pg_temp.throws_any(
+  $$update public.classroom_staff_assignments set status = 'inactive',
+      school_id = 'b0000000-0000-0000-0000-000000000001'
+    where id = 'a0000000-0000-0000-0000-000000000046'$$,
+  'deactivation cannot move the assignment tenant'
+);
+select pg_temp.throws_any(
+  $$update public.classroom_staff_assignments set status = 'inactive',
+      membership_id = 'a0000000-0000-0000-0000-000000000044'
+    where id = 'a0000000-0000-0000-0000-000000000046'$$,
+  'deactivation cannot replace the assigned Teacher identity'
+);
+select pg_temp.throws_any(
+  $$update public.classroom_staff_assignments set status = 'inactive',
+      starts_on = current_date - 1
+    where id = 'a0000000-0000-0000-0000-000000000046'$$,
+  'deactivation cannot rewrite the assignment history start date'
+);
+select pg_temp.throws_any(
+  $$update public.classroom_staff_assignments set status = 'inactive',
+      id = 'a0000000-0000-0000-0000-000000000048'
+    where id = 'a0000000-0000-0000-0000-000000000046'$$,
+  'deactivation cannot replace the assignment row identity'
+);
+select pg_temp.throws_any(
+  $$update public.classroom_staff_assignments set status = 'active', ends_on = null
+    where id = 'a0000000-0000-0000-0000-000000000046'$$,
+  'assignment reactivation requires an active Teacher membership'
+);
+select pg_temp.throws_any(
+  $$insert into public.classroom_staff_assignments (school_id, classroom_id, membership_id, status)
+    values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000021',
+      'a0000000-0000-0000-0000-000000000042', 'inactive')$$,
+  'even an initially inactive new assignment requires active Teacher membership'
 );
 select pg_temp.throws_any(
   $$select public.set_school_membership_status('b0000000-0000-0000-0000-000000000042', 'inactive')$$,
@@ -999,6 +1056,12 @@ select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002
 set local role authenticated;
 select extensions.is((select count(*)::integer from public.children), 0, 'inactive teacher membership immediately denies child access');
 select extensions.is((select count(*)::integer from public.classrooms), 0, 'inactive teacher membership immediately denies classroom access');
+select pg_temp.throws_any(
+  $$insert into public.classroom_staff_assignments (school_id, classroom_id, membership_id)
+    values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000021',
+      'a0000000-0000-0000-0000-000000000042')$$,
+  'an inactive Teacher cannot self-assign'
+);
 reset role;
 
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
@@ -1007,6 +1070,39 @@ select extensions.lives_ok(
   $$select public.set_school_membership_status('a0000000-0000-0000-0000-000000000042', 'active')$$,
   'school admin can reactivate the same-school teacher'
 );
+select extensions.is(
+  (select status::text from public.classroom_staff_assignments where id = 'a0000000-0000-0000-0000-000000000046'),
+  'inactive',
+  'membership reactivation does not restore an explicitly revoked assignment'
+);
+select extensions.lives_ok(
+  $$update public.classroom_staff_assignments set status = 'active', ends_on = null
+    where id = 'a0000000-0000-0000-0000-000000000046'$$,
+  'only an active Teacher membership permits authorized assignment reactivation'
+);
+select extensions.is(
+  (select count(*)::integer from public.audit_log
+    where entity_table = 'classroom_staff_assignments' and entity_id = 'a0000000-0000-0000-0000-000000000046'),
+  3,
+  'assignment creation, revocation and reactivation retain reduced audit history'
+);
+select extensions.lives_ok(
+  $$update public.classroom_staff_assignments set status = 'inactive', ends_on = current_date
+    where id = 'a0000000-0000-0000-0000-000000000046'$$,
+  'an administrator can keep a separately revoked assignment inactive'
+);
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select extensions.results_eq(
+  $$update public.classroom_staff_assignments set status = 'active', ends_on = null
+    where id = 'a0000000-0000-0000-0000-000000000046' returning id$$,
+  array[]::uuid[],
+  'an active Teacher cannot update or self-reactivate a revoked assignment'
+);
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
 select extensions.lives_ok(
   $$select public.set_school_membership_status('a0000000-0000-0000-0000-000000000047', 'inactive')$$,
   'one of two active School Admins may be deactivated'
@@ -1423,6 +1519,134 @@ select extensions.is(
     and entity_table in ('children', 'child_enrollments', 'child_guardians', 'child_media_consents')) > 4,
   true,
   'child lifecycle, enrollment, guardian link, and media consent writes are audited without content'
+);
+
+-- Staff invitations share a school/email slot regardless of staff role. The
+-- existing pending-status model requires explicit revocation of expired rows.
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok(
+  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
+    values ('a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'teacher',
+      gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
+  'School Admin can create a pending Teacher invitation'
+);
+select pg_temp.throws_any(
+  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
+    values ('a0000000-0000-0000-0000-000000000001', 'STAFF-CONFLICT@loop.test', 'school_admin',
+      gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
+  'pending Teacher invite blocks same-school School Admin invite after email normalization'
+);
+select pg_temp.throws_any(
+  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
+    values ('a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'teacher',
+      gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
+  'duplicate same-role pending staff invitation is rejected'
+);
+select extensions.lives_ok(
+  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
+    values ('a0000000-0000-0000-0000-000000000001', 'inverse-staff@loop.test', 'school_admin',
+      gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
+  'School Admin can create a pending School Admin invitation'
+);
+select pg_temp.throws_any(
+  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
+    values ('a0000000-0000-0000-0000-000000000001', 'inverse-staff@loop.test', 'teacher',
+      gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
+  'pending School Admin invite blocks same-school Teacher invite'
+);
+select extensions.ok(
+  (select idx.indisunique and idx.indisvalid
+    from pg_catalog.pg_index idx
+    where idx.indexrelid = 'public.invitations_one_pending_staff_per_school_email'::regclass),
+  'a valid database unique index serializes competing pending staff inserts'
+);
+select extensions.ok(
+  (select pg_catalog.pg_get_expr(idx.indpred, idx.indrelid) not like '%now(%'
+    from pg_catalog.pg_index idx
+    where idx.indexrelid = 'public.invitations_one_pending_staff_per_school_email'::regclass),
+  'staff uniqueness predicate contains no volatile clock expression'
+);
+select extensions.lives_ok(
+  $$update public.invitations set status = 'revoked', revoked_at = now()
+    where school_id = 'a0000000-0000-0000-0000-000000000001'
+      and invited_email = 'staff-conflict@loop.test' and status = 'pending'$$,
+  'authorized Admin can revoke the pending Teacher invite'
+);
+select extensions.lives_ok(
+  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
+    values ('a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'school_admin',
+      gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
+  'revoked invitation no longer blocks a legitimate different-role staff invite'
+);
+reset role;
+-- This is a transaction-scoped fixture: Admins cannot forge created_at.
+select extensions.lives_ok(
+  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash,
+      created_at, expires_at, invited_by_user_id)
+    values ('a0000000-0000-0000-0000-000000000001', 'expired-staff@loop.test', 'teacher',
+      gen_random_bytes(32), now() - interval '2 days', now() - interval '1 day',
+      '10000000-0000-0000-0000-000000000001')$$,
+  'existing model permits an expired row still marked pending'
+);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
+    values ('a0000000-0000-0000-0000-000000000001', 'expired-staff@loop.test', 'school_admin',
+      gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
+  'expired-but-pending staff invitation retains its slot until explicit revocation'
+);
+select extensions.lives_ok(
+  $$update public.invitations set status = 'revoked', revoked_at = now()
+    where school_id = 'a0000000-0000-0000-0000-000000000001'
+      and invited_email = 'expired-staff@loop.test' and status = 'pending'$$,
+  'expired pending invitation can be revoked to release its slot'
+);
+select extensions.lives_ok(
+  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
+    values ('a0000000-0000-0000-0000-000000000001', 'expired-staff@loop.test', 'school_admin',
+      gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
+  'a new legitimate staff invite follows expiry plus explicit revocation'
+);
+select extensions.lives_ok(
+  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
+    values ('a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'guardian',
+      gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
+  'Guardian invitation remains independent of a pending staff invitation'
+);
+select pg_temp.throws_any(
+  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
+    values ('a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'guardian',
+      gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
+  'existing role-scoped pending Guardian duplicate rule remains unchanged'
+);
+select pg_temp.throws_any(
+  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
+    values ('a0000000-0000-0000-0000-000000000001', 'forbidden-role@loop.test', 'platform_super_admin',
+      gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
+  'School Admin cannot provision platform_super_admin through invitation role'
+);
+select pg_temp.throws_any(
+  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
+    values ('b0000000-0000-0000-0000-000000000001', 'cross-school-staff@loop.test', 'teacher',
+      gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
+  'School A administrator cannot create an invitation for School B'
+);
+reset role;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok(
+  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
+    values ('b0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'teacher',
+      gen_random_bytes(32), now() + interval '1 day', '20000000-0000-0000-0000-000000000001')$$,
+  'another school can independently invite the same normalized staff email'
+);
+reset role;
+
+select extensions.ok(
+  (select count(*)::integer from public.audit_log
+    where entity_table = 'invitations' and school_id = 'a0000000-0000-0000-0000-000000000001') >= 7,
+  'staff invitation creation and revocation append reduced school audit records'
 );
 
 select * from extensions.finish();
