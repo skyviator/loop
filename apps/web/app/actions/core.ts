@@ -109,17 +109,13 @@ export async function createChildAction(formData: FormData) {
   const viewer = await requireViewer(["school_admin"]);
   const classroomId = uuid(formData.get("classroom_id"), "Classroom");
   const preferredName = requiredText(formData.get("preferred_name"), "Child name", 80);
-  const supabase = await createClient();
-  const child = await supabase.from("children").insert({ school_id: viewer.schoolId!, preferred_name: preferredName }).select("id").single();
-  if (child.error) throw new Error(child.error.message);
-  const enrollment = await supabase.from("child_enrollments").insert({
-    school_id: viewer.schoolId!, child_id: child.data.id, classroom_id: classroomId,
-    starts_on: localDate(viewer.timezone), status: "active",
+  const { error } = await (await createClient()).rpc("create_child_with_enrollment", {
+    expected_school_id: viewer.schoolId!,
+    target_preferred_name: preferredName,
+    target_classroom_id: classroomId,
+    enrollment_start: localDate(viewer.timezone),
   });
-  if (enrollment.error) {
-    await supabase.from("children").update({ status: "archived" }).eq("id", child.data.id);
-    throw new Error(enrollment.error.message);
-  }
+  if (error) throw new Error(error.message);
   revalidatePath("/school");
 }
 

@@ -1718,6 +1718,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      create_child_with_enrollment: {
+        Args: {
+          enrollment_start: string
+          expected_school_id: string
+          target_classroom_id: string
+          target_preferred_name: string
+        }
+        Returns: string
+      }
       deactivate_push_subscription: {
         Args: { subscription_endpoint: string }
         Returns: boolean

@@ -80,12 +80,17 @@ test("Step 4 private media and communication flows", async ({ browser }) => {
     const schoolAdmin = await signedInPage(browser, "school_admin", { width: 1440, height: 900 });
     contexts.push(schoolAdmin.context);
     const adminPage = schoolAdmin.page;
+    await adminPage.getByLabel("Search children").fill("Amaya Herath");
+    await adminPage.locator(".child-roster-item").filter({ hasText: "Amaya Herath" }).click();
     await expect(adminPage.getByRole("heading", { name: "Media consent" })).toBeVisible();
     await expect(adminPage.getByLabel("Short video")).toBeDisabled();
-    const unrecordedConsent = adminPage.locator(".consent-row").filter({ has: adminPage.getByText("Amaya Herath", { exact: true }) });
+    const unrecordedConsent = adminPage.locator(".child-profile-consent");
     await unrecordedConsent.locator("select").selectOption("granted");
     await unrecordedConsent.getByRole("button", { name: "Save consent" }).click();
-    await expect(adminPage.locator(".consent-row").filter({ has: adminPage.getByText("Amaya Herath", { exact: true }) }).locator("select")).toHaveValue("granted");
+    await adminPage.reload();
+    await adminPage.getByLabel("Search children").fill("Amaya Herath");
+    await adminPage.locator(".child-roster-item").filter({ hasText: "Amaya Herath" }).click();
+    await expect(adminPage.locator(".child-profile-consent select")).toHaveValue("granted");
     const permissions = adminPage.locator("form").filter({ has: adminPage.getByRole("button", { name: "Save communication permissions" }) });
     await permissions.getByLabel("Teachers may publish to assigned classrooms").check();
     await permissions.getByLabel("Teachers may manage assigned classroom events").check();
@@ -263,9 +268,30 @@ test("Step 4 private media and communication flows", async ({ browser }) => {
   } finally {
     if (assetIds.length) {
       const variants = await admin.from("media_variants").select("object_key").in("asset_id", assetIds);
+      if (variants.error) throw variants.error;
       for (const { object_key } of variants.data ?? []) {
         await r2.send(new DeleteObjectCommand({ Bucket: local.R2_BUCKET_NAME, Key: object_key }));
         await expect(r2.send(new HeadObjectCommand({ Bucket: local.R2_BUCKET_NAME, Key: object_key }))).rejects.toMatchObject({ $metadata: { httpStatusCode: 404 } });
+      }
+      // Remove only this test's synthetic local metadata after private R2
+      // cleanup. A rerun must not display broken QA images or consume a plan.
+      const assets = await admin.from("media_assets").select("id, reservation_id, school_id, total_bytes").in("id", assetIds);
+      if (assets.error) throw assets.error;
+      if (assets.data.length) {
+        const deleted = await admin.from("media_assets").delete().in("id", assets.data.map((asset) => asset.id));
+        if (deleted.error) throw deleted.error;
+        const remaining = await admin.from("media_assets").select("id").in("id", assets.data.map((asset) => asset.id));
+        if (remaining.error) throw remaining.error;
+        expect(remaining.data).toHaveLength(0);
+        const reservations = await admin.from("media_upload_reservations").delete().in("id", assets.data.map((asset) => asset.reservation_id));
+        if (reservations.error) throw reservations.error;
+        for (const schoolId of new Set(assets.data.map((asset) => asset.school_id))) {
+          const usage = await admin.from("school_storage_usage").select("used_bytes").eq("school_id", schoolId).single();
+          if (usage.error) throw usage.error;
+          const releasedBytes = assets.data.filter((asset) => asset.school_id === schoolId).reduce((total, asset) => total + (asset.total_bytes ?? 0), 0);
+          const released = await admin.from("school_storage_usage").update({ used_bytes: Math.max(0, usage.data.used_bytes - releasedBytes) }).eq("school_id", schoolId);
+          if (released.error) throw released.error;
+        }
       }
     }
     await Promise.all(contexts.map((context) => context.close()));

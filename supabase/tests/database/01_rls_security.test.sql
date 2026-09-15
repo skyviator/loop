@@ -1231,5 +1231,199 @@ select extensions.ok(
   'security-relevant lifecycle changes are represented in the reduced audit log'
 );
 
+-- Child creation and the initial enrollment are one narrow invoker transaction.
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok(
+  $$select public.create_child_with_enrollment('a0000000-0000-0000-0000-000000000001', 'Atomic Child', 'a0000000-0000-0000-0000-000000000020', current_date)$$,
+  'School Admin atomically creates a child in an active same-school classroom'
+);
+reset role;
+select extensions.is(
+  (select count(*)::integer
+     from public.children child
+     join public.child_enrollments enrollment
+       on enrollment.child_id = child.id
+      and enrollment.school_id = child.school_id
+    where child.preferred_name = 'Atomic Child'
+      and child.school_id = 'a0000000-0000-0000-0000-000000000001'
+      and child.status = 'active'
+      and enrollment.classroom_id = 'a0000000-0000-0000-0000-000000000020'
+      and enrollment.status = 'active'),
+  1,
+  'atomic child creation leaves exactly one active child and enrollment'
+);
+select extensions.is(
+  (select consent.state::text
+     from public.child_media_consents consent
+     join public.children child on child.id = consent.child_id and child.school_id = consent.school_id
+    where child.preferred_name = 'Atomic Child'),
+  'not_recorded',
+  'atomic child creation keeps the conservative default media consent'
+);
+select extensions.is(
+  (select count(*)::integer
+     from public.audit_log event
+    where event.school_id = 'a0000000-0000-0000-0000-000000000001'
+      and (
+        event.entity_table = 'children'
+          and event.entity_id = (select id from public.children where preferred_name = 'Atomic Child')
+        or event.entity_table in ('child_enrollments', 'child_media_consents')
+          and event.new_values ->> 'child_id' = (select id::text from public.children where preferred_name = 'Atomic Child')
+      )),
+  3,
+  'atomic child creation audits child, enrollment, and default consent creation'
+);
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.create_child_with_enrollment('a0000000-0000-0000-0000-000000000001', 'Cross-school orphan', 'b0000000-0000-0000-0000-000000000020', current_date)$$,
+  'School Admin cannot inject a classroom from another school during child creation'
+);
+select pg_temp.throws_any(
+  $$select public.create_child_with_enrollment('b0000000-0000-0000-0000-000000000001', 'Mismatched-school orphan', 'a0000000-0000-0000-0000-000000000020', current_date)$$,
+  'School Admin cannot create against a school other than the expected page tenant'
+);
+reset role;
+select extensions.is(
+  (select count(*)::integer from public.children where preferred_name in ('Cross-school orphan', 'Mismatched-school orphan')),
+  0,
+  'failed cross-school enrollment and tenant mismatch leave no orphan child'
+);
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.create_child_with_enrollment('a0000000-0000-0000-0000-000000000001', 'Teacher orphan', 'a0000000-0000-0000-0000-000000000020', current_date)$$,
+  'Teacher cannot call atomic child creation'
+);
+reset role;
+select extensions.is((select count(*)::integer from public.children where preferred_name = 'Teacher orphan'), 0, 'Teacher denial leaves no orphan child');
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.create_child_with_enrollment('a0000000-0000-0000-0000-000000000001', 'Guardian orphan', 'a0000000-0000-0000-0000-000000000020', current_date)$$,
+  'Guardian cannot call atomic child creation'
+);
+reset role;
+select extensions.is((select count(*)::integer from public.children where preferred_name = 'Guardian orphan'), 0, 'Guardian denial leaves no orphan child');
+
+update public.plans
+   set max_active_children = (
+     select count(*) from public.children
+      where school_id = 'a0000000-0000-0000-0000-000000000001' and status = 'active'
+   )
+ where id = '30000000-0000-0000-0000-000000000001';
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.create_child_with_enrollment('a0000000-0000-0000-0000-000000000001', 'Plan-limit orphan', 'a0000000-0000-0000-0000-000000000020', current_date)$$,
+  'atomic child creation retains serialized plan-limit enforcement'
+);
+reset role;
+select extensions.is((select count(*)::integer from public.children where preferred_name = 'Plan-limit orphan'), 0, 'plan-limit failure leaves no orphan child');
+update public.plans set max_active_children = 101 where id = '30000000-0000-0000-0000-000000000001';
+
+-- Force a real enrollment write failure after the child has been inserted.
+-- The RPC transaction must also roll back the child, default consent, and audit.
+create temp table atomic_audit_before as
+select count(*)::integer as total from public.audit_log where action = 'children.insert';
+create function pg_temp.fail_atomic_enrollment()
+returns trigger
+language plpgsql
+as $$
+begin
+  if exists (
+    select 1 from public.children child
+     where child.id = new.child_id and child.preferred_name = 'Rollback Child'
+  ) then
+    raise exception 'Simulated enrollment write failure';
+  end if;
+  return new;
+end;
+$$;
+create trigger test_fail_atomic_enrollment
+before insert on public.child_enrollments
+for each row execute function pg_temp.fail_atomic_enrollment();
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.create_child_with_enrollment('a0000000-0000-0000-0000-000000000001', 'Rollback Child', 'a0000000-0000-0000-0000-000000000020', current_date)$$,
+  'a failed enrollment write rolls back atomic child creation'
+);
+reset role;
+drop trigger test_fail_atomic_enrollment on public.child_enrollments;
+select extensions.is((select count(*)::integer from public.children where preferred_name = 'Rollback Child'), 0, 'enrollment failure leaves no orphan child');
+select extensions.is(
+  (select count(*)::integer from public.audit_log where action = 'children.insert'),
+  (select total from atomic_audit_before),
+  'enrollment failure leaves no committed child audit event'
+);
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$insert into public.child_guardians (school_id, child_id, guardian_membership_id, relationship_label)
+    values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000030', 'b0000000-0000-0000-0000-000000000043', 'Parent')$$,
+  'School Admin cannot link a guardian membership from another school'
+);
+select pg_temp.throws_any(
+  $$insert into public.child_guardians (school_id, child_id, guardian_membership_id, relationship_label)
+    values ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000030', 'a0000000-0000-0000-0000-000000000043', 'Parent')$$,
+  'School Admin cannot link a child from another school'
+);
+select pg_temp.throws_any(
+  $$select public.move_child_enrollment('a0000000-0000-0000-0000-000000000030', 'b0000000-0000-0000-0000-000000000020', current_date)$$,
+  'School Admin cannot move a same-school child into a cross-school classroom'
+);
+reset role;
+
+update public.branches set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000010';
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.create_child_with_enrollment('a0000000-0000-0000-0000-000000000001', 'Inactive-branch orphan', 'a0000000-0000-0000-0000-000000000020', current_date)$$,
+  'School Admin cannot create a child beneath an inactive branch'
+);
+select pg_temp.throws_any(
+  $$select public.move_child_enrollment('a0000000-0000-0000-0000-000000000030', 'a0000000-0000-0000-0000-000000000021', current_date)$$,
+  'School Admin cannot move a child to a classroom under an inactive branch'
+);
+reset role;
+select extensions.is((select count(*)::integer from public.children where preferred_name = 'Inactive-branch orphan'), 0, 'inactive branch failure leaves no orphan child');
+update public.branches set status = 'active' where id = 'a0000000-0000-0000-0000-000000000010';
+
+update public.classrooms set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000021';
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.create_child_with_enrollment('a0000000-0000-0000-0000-000000000001', 'Inactive-classroom orphan', 'a0000000-0000-0000-0000-000000000021', current_date)$$,
+  'School Admin cannot create a child in an inactive classroom'
+);
+reset role;
+select extensions.is((select count(*)::integer from public.children where preferred_name = 'Inactive-classroom orphan'), 0, 'inactive classroom failure leaves no orphan child');
+update public.classrooms set status = 'active' where id = 'a0000000-0000-0000-0000-000000000021';
+
+-- A reactivated child never revives a separately revoked guardian link.
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+update public.child_guardians set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000060';
+update public.children set status = 'inactive' where id = 'a0000000-0000-0000-0000-000000000030';
+update public.children set status = 'active' where id = 'a0000000-0000-0000-0000-000000000030';
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.children where id = 'a0000000-0000-0000-0000-000000000030'), 0, 'child reactivation does not restore a revoked guardian link');
+reset role;
+
+select extensions.is(
+  (select count(*)::integer from public.audit_log where school_id = 'a0000000-0000-0000-0000-000000000001'
+    and entity_table in ('children', 'child_enrollments', 'child_guardians', 'child_media_consents')) > 4,
+  true,
+  'child lifecycle, enrollment, guardian link, and media consent writes are audited without content'
+);
+
 select * from extensions.finish();
 rollback;
