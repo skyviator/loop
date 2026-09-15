@@ -184,9 +184,16 @@ test.describe.serial("Loop staging HTTPS verification", () => {
       contexts.push(schoolAdmin.context);
       await expect(schoolAdmin.page).toHaveURL(/\/school/);
       await expect(schoolAdmin.page.getByText("Loop Demo Nursery — TEST").first()).toBeVisible();
-      await expect(schoolAdmin.page.locator("details.management-row > summary strong").filter({ hasText: "Main Branch — TEST" })).toBeVisible();
-      await expect(schoolAdmin.page.getByLabel("Butterflies classroom name")).toHaveValue("Butterflies");
-      await expect(schoolAdmin.page.getByLabel("Sunbeams classroom name")).toHaveValue("Sunbeams");
+      const branch = schoolAdmin.page.locator('[data-structure-kind="branch"]').filter({ has: schoolAdmin.page.getByRole("heading", { name: "Main Branch — TEST", exact: true }) });
+      await expect(branch).toBeVisible();
+      await branch.getByText("Edit branch", { exact: true }).click();
+      await expect(branch.getByLabel("Branch name")).toHaveValue("Main Branch — TEST");
+      for (const name of ["Butterflies", "Sunbeams"]) {
+        const classroom = schoolAdmin.page.locator('[data-structure-kind="classroom"]').filter({ has: schoolAdmin.page.getByRole("heading", { name, exact: true }) });
+        await expect(classroom).toBeVisible();
+        await classroom.getByText("Edit classroom", { exact: true }).click();
+        await expect(classroom.getByLabel("Classroom name")).toHaveValue(name);
+      }
       await expect(schoolAdmin.page.getByRole("heading", { name: "Timetable" })).toBeVisible();
       await expect(schoolAdmin.page.getByRole("button", { name: "Save school settings" })).toBeVisible();
       await schoolAdmin.page.goto("/platform");
