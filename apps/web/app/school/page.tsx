@@ -13,19 +13,8 @@ import { ChildGuardianManagement } from "@/components/child-guardian-management"
 import { SchoolStructureManagement } from "@/components/school-structure-management";
 import { StaffManagement } from "@/components/staff-management";
 import { requireViewer } from "@/lib/auth";
+import { schoolAdminNavigation } from "@/lib/navigation";
 import { createClient } from "@/lib/supabase/server";
-
-const nav = [
-  { href: "/school", label: "Overview", icon: "home" as const },
-  { href: "/school#people", label: "People", icon: "people" as const },
-  { href: "/school#classrooms", label: "Classrooms", icon: "building" as const },
-  { href: "/school#timetable", label: "Timetable", icon: "calendar" as const },
-  { href: "/school#features", label: "Features", icon: "settings" as const },
-  { href: "/messages", label: "Messages", icon: "message" as const },
-  { href: "/updates", label: "Updates", icon: "announcement" as const },
-  { href: "/school#settings", label: "School", icon: "settings" as const },
-  { href: "/settings", label: "My settings", icon: "bell" as const },
-];
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -74,7 +63,7 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
     || state.membershipError === "The staff membership could not be changed. Check that the school and your access are active." ? state.membershipError : null;
   const branchActive = new Map(branches.data?.map((branch) => [branch.id, branch.status === "active"]));
 
-  return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Overview" nav={nav}>
+  return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Overview" nav={schoolAdminNavigation}>
     {invitationCreated ? <StatusNote tone="success">{localInviteUrl ? <>Local-only invite URL: <a className="text-link break-all" href={localInviteUrl}>{localInviteUrl}</a></> : "Invitation created. Production email delivery is not configured in this step."}</StatusNote> : null}
     {membershipError ? <StatusNote tone="warning">{membershipError}</StatusNote> : null}
     {staffError ? <StatusNote tone="warning">{staffError}</StatusNote> : null}

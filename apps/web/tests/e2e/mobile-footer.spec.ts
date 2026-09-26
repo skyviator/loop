@@ -10,9 +10,11 @@ const credentialsFile = process.env.LOOP_ENV === "staging"
   ? "supabase/.temp/staging-test-credentials.json"
   : "supabase/.temp/test-credentials.json";
 const credentials = JSON.parse(readFileSync(resolve(process.cwd(), credentialsFile), "utf8")) as Credentials;
-const guardian = credentials.accounts.find((account) => account.role === "guardian");
-
-if (!guardian) throw new Error("Missing guardian browser-test credentials.");
+const footerAccounts = ["guardian", "teacher"].map((role) => {
+  const account = credentials.accounts.find((candidate) => candidate.role === role);
+  if (!account) throw new Error(`Missing ${role} browser-test credentials.`);
+  return account;
+});
 
 const mobileViewports = [
   { width: 375, height: 812 },
@@ -20,26 +22,27 @@ const mobileViewports = [
   { width: 430, height: 932 },
 ];
 
-async function signIn(page: Page) {
+async function signIn(page: Page, account: Account) {
   await page.goto("/sign-in");
-  await page.getByLabel("Email").fill(guardian!.email);
-  await page.getByLabel("Password").fill(guardian!.password);
+  await page.getByLabel("Email").fill(account.email);
+  await page.getByLabel("Password").fill(account.password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForLoadState("networkidle");
   await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
 }
 
-for (const viewport of mobileViewports) {
-  test(`equally distributes visible footer items at ${viewport.width}x${viewport.height}`, async ({ page }) => {
-    await page.setViewportSize(viewport);
-    await signIn(page);
+for (const account of footerAccounts) {
+  for (const viewport of mobileViewports) {
+    test(`${account.role} footer equally distributes visible items at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await signIn(page, account);
 
-    const nav = page.getByRole("navigation", { name: "Primary" });
-    const itemCounts: Array<number | undefined> = [undefined, 3, 4, 5, 6];
+      const nav = page.getByRole("navigation", { name: "Primary" });
+      const itemCounts: Array<number | undefined> = [undefined, 3, 4, 5, 6];
 
-    for (const itemCount of itemCounts) {
-      if (itemCount) {
-        await nav.evaluate((element, targetCount) => {
+      for (const itemCount of itemCounts) {
+        if (itemCount) {
+          await nav.evaluate((element, targetCount) => {
           element.querySelectorAll("[data-footer-test-clone]").forEach((item) => item.remove());
           const items = [...element.querySelectorAll<HTMLElement>(".nav-link")];
           const source = items[0];
@@ -50,10 +53,10 @@ for (const viewport of mobileViewports) {
             clone.dataset.footerTestClone = "";
             element.append(clone);
           }
-        }, itemCount);
-      }
+          }, itemCount);
+        }
 
-      const metrics = await nav.evaluate((element) => {
+        const metrics = await nav.evaluate((element) => {
         const navBox = element.getBoundingClientRect();
         const items = [...element.querySelectorAll<HTMLElement>(".nav-link")]
           .filter((item) => item.getClientRects().length > 0)
@@ -78,19 +81,20 @@ for (const viewport of mobileViewports) {
           navOverflow: element.scrollWidth - element.clientWidth,
           pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         };
-      });
+        });
 
-      if (itemCount) expect(metrics.itemCount).toBe(itemCount);
-      else expect(metrics.itemCount).toBeGreaterThan(1);
-      expect(metrics.navWidth).toBeGreaterThanOrEqual(viewport.width - 10);
-      expect(Math.max(...metrics.itemWidths) - Math.min(...metrics.itemWidths)).toBeLessThanOrEqual(1);
-      expect(Math.max(...metrics.centerDistances) - Math.min(...metrics.centerDistances)).toBeLessThanOrEqual(1);
-      expect(metrics.firstGap).toBeLessThanOrEqual(1);
-      expect(metrics.lastGap).toBeLessThanOrEqual(1);
-      expect(metrics.edgeCenterBalance).toBeLessThanOrEqual(1);
-      expect(metrics.minimumItemHeight).toBeGreaterThanOrEqual(48);
-      expect(metrics.navOverflow).toBeLessThanOrEqual(1);
-      expect(metrics.pageOverflow).toBeLessThanOrEqual(0);
-    }
-  });
+        if (itemCount) expect(metrics.itemCount).toBe(itemCount);
+        else expect(metrics.itemCount).toBeGreaterThan(1);
+        expect(metrics.navWidth).toBeGreaterThanOrEqual(viewport.width - 10);
+        expect(Math.max(...metrics.itemWidths) - Math.min(...metrics.itemWidths)).toBeLessThanOrEqual(1);
+        expect(Math.max(...metrics.centerDistances) - Math.min(...metrics.centerDistances)).toBeLessThanOrEqual(1);
+        expect(metrics.firstGap).toBeLessThanOrEqual(1);
+        expect(metrics.lastGap).toBeLessThanOrEqual(1);
+        expect(metrics.edgeCenterBalance).toBeLessThanOrEqual(1);
+        expect(metrics.minimumItemHeight).toBeGreaterThanOrEqual(48);
+        expect(metrics.navOverflow).toBeLessThanOrEqual(1);
+        expect(metrics.pageOverflow).toBeLessThanOrEqual(0);
+      }
+    });
+  }
 }

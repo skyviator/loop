@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { communicationNavigation, guardianNavigation, isNavigationItemActive, teacherNavigation } from "./navigation";
+import {
+  communicationNavigation,
+  guardianNavigation,
+  isMobileNavigationItemActive,
+  isNavigationItemActive,
+  schoolAdminMoreNavigation,
+  schoolAdminNavigation,
+  teacherNavigation,
+} from "./navigation";
 
 describe("authenticated primary navigation", () => {
   it("keeps the Guardian destinations consistent", () => {
@@ -36,5 +44,41 @@ describe("authenticated primary navigation", () => {
     expect(activeLabels("/messages", "")).toEqual(["Messages"]);
     expect(activeLabels("/updates", "")).toEqual(["Updates"]);
     expect(activeLabels("/settings", "")).toEqual(["Settings"]);
+  });
+
+  it("keeps all nine School Admin destinations on desktop and a focused mobile set", () => {
+    expect(schoolAdminNavigation.filter((item) => !item.mobileOnly).map((item) => item.label)).toEqual([
+      "Overview",
+      "People",
+      "Classrooms",
+      "Timetable",
+      "Features",
+      "Messages",
+      "Updates",
+      "School",
+      "My settings",
+    ]);
+    expect(schoolAdminNavigation.filter((item) => !item.mobileHidden).map((item) => item.label)).toEqual([
+      "Overview",
+      "People",
+      "Messages",
+      "Updates",
+      "More",
+    ]);
+    expect(schoolAdminMoreNavigation.map((item) => item.label)).toEqual([
+      "Classrooms",
+      "Timetable",
+      "Features",
+      "School",
+      "My settings",
+    ]);
+  });
+
+  it("marks More active for School Admin destinations moved out of the mobile footer", () => {
+    const more = schoolAdminNavigation.find((item) => item.mobileMore)!;
+
+    expect(isMobileNavigationItemActive(more, schoolAdminNavigation, "/school", "#classrooms")).toBe(true);
+    expect(isMobileNavigationItemActive(more, schoolAdminNavigation, "/settings", "")).toBe(true);
+    expect(isMobileNavigationItemActive(more, schoolAdminNavigation, "/messages", "")).toBe(false);
   });
 });
