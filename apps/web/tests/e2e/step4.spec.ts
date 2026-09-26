@@ -24,7 +24,7 @@ const local = environment(resolve(process.cwd(), "apps/web/.env.local"));
 const localStatus = parseEnvironment(process.platform === "win32"
   ? execFileSync("cmd.exe", ["/d", "/s", "/c", "pnpm exec supabase status --output env --network-id loop-local-network"], { cwd: process.cwd(), encoding: "utf8" })
   : execFileSync("pnpm", ["exec", "supabase", "status", "--output", "env", "--network-id", "loop-local-network"], { cwd: process.cwd(), encoding: "utf8" }));
-if (localStatus.API_URL !== "http://127.0.0.1:54321" || !localStatus.SECRET_KEY?.startsWith("sb_secret_")) {
+if (!/^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/.test(localStatus.API_URL ?? "") || !localStatus.SECRET_KEY?.startsWith("sb_secret_")) {
   throw new Error("Step 4 tests require the guarded local Supabase environment.");
 }
 const admin = createClient(localStatus.API_URL, localStatus.SECRET_KEY, {

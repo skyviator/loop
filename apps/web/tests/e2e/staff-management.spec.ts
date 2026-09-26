@@ -15,7 +15,7 @@ const local = Object.fromEntries(status.split(/\r?\n/).flatMap((line) => {
   const match = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
   return match ? [[match[1], match[2].trim().replace(/^[\'"]|[\'"]$/g, "")]] : [];
 }));
-if (local.API_URL !== "http://127.0.0.1:54321" || !local.SECRET_KEY?.startsWith("sb_secret_") || !local.PUBLISHABLE_KEY?.startsWith("sb_publishable_")) {
+if (!/^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/.test(local.API_URL ?? "") || !local.SECRET_KEY?.startsWith("sb_secret_") || !local.PUBLISHABLE_KEY?.startsWith("sb_publishable_")) {
   throw new Error("Staff management tests require guarded local Supabase.");
 }
 const admin = createClient(local.API_URL, local.SECRET_KEY, { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } });
@@ -70,7 +70,7 @@ test("staff roster search and honest staff invitation lifecycle", async ({ page 
     const invitations = page.locator("#staff-invitations");
     const form = invitations.locator(":scope > form");
     await expect(form.locator('select[name="role"] option')).toHaveCount(2);
-    await expect(invitations.getByText("no email is sent", { exact: false })).toBeVisible();
+    await expect(invitations.getByText("Failed delivery remains visible", { exact: false })).toBeVisible();
     await form.getByLabel("Email").fill(email);
     await form.getByLabel("Staff role").selectOption("teacher");
     await form.getByRole("button", { name: "Create staff invitation" }).click();
@@ -96,7 +96,7 @@ test("staff roster search and honest staff invitation lifecycle", async ({ page 
       token_hash: `\\x${randomBytes(32).toString("hex")}`,
       created_at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
       expires_at: new Date(Date.now() - 86_400_000).toISOString(),
-      invited_by_user_id: (await admin.from("school_memberships").select("user_id").eq("school_id", schoolId).eq("role", "school_admin").single()).data?.user_id,
+      invited_by_user_id: (await admin.from("school_memberships").select("user_id").eq("school_id", schoolId).eq("role", "school_admin").eq("status", "active").limit(1).single()).data?.user_id,
     });
     if (expired.error) throw expired.error;
     await page.reload();

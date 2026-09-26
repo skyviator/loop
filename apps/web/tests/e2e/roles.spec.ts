@@ -8,6 +8,7 @@ type Credentials = {
   accounts: Account[];
 };
 const credentials = JSON.parse(readFileSync(resolve(process.cwd(), "supabase/.temp/test-credentials.json"), "utf8")) as Credentials;
+const mailpitUrl = process.env.SUPABASE_MAILPIT_URL ?? "http://127.0.0.1:54324";
 
 async function signIn(page: Page, role: string) {
   const account = credentials.accounts.find((item) => item.role === role);
@@ -130,7 +131,7 @@ test("guardian reaches mobile Child Today timeline", async ({ page }) => {
 test("forgot and reset password completes through local Mailpit", async ({ page, request }) => {
   const account = credentials.accounts.find((item) => item.role === "school_admin_2");
   if (!account) throw new Error("Missing local recovery-test credentials.");
-  await request.delete("http://127.0.0.1:54324/api/v1/messages");
+  await request.delete(`${mailpitUrl}/api/v1/messages`);
   await page.goto("/forgot-password");
   await page.getByLabel("Email").fill(account.email);
   await page.getByRole("button", { name: "Send reset link" }).click();
@@ -164,17 +165,12 @@ test("valid invitation enforces email, activates once, signs out, and protects r
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(invitationLink!);
-  await expect(page.getByRole("button", { name: "Activate account" })).toBeVisible();
-  await page.getByLabel("Invited email").fill("wrong.identity@loop.local");
-  await page.getByLabel("Create password").fill(`Loop-wrong-${Date.now()}!`);
-  await page.getByRole("button", { name: "Activate account" }).click();
-  await expect(page.getByText("does not match that email")).toBeVisible();
-  await expect(page).toHaveURL(/token=/);
+  await expect(page.getByRole("button", { name: "Create and activate account" })).toBeVisible();
+  await expect(page.getByText("The invitation determines the school and access.", { exact: false })).toBeVisible();
 
   const invitedPassword = `Loop-invited-${Date.now()}!`;
-  await page.getByLabel("Invited email").fill(invitedEmail);
   await page.getByLabel("Create password").fill(invitedPassword);
-  await page.getByRole("button", { name: "Activate account" }).click();
+  await page.getByRole("button", { name: "Create and activate account" }).click();
   await expect(page).toHaveURL(/\/teacher/);
   await expect(page.getByText(/no active classroom is assigned/i)).toBeVisible();
 
@@ -184,23 +180,23 @@ test("valid invitation enforces email, activates once, signs out, and protects r
   await expect(page).toHaveURL(/\/sign-in/);
   await page.goto(invitationLink!);
   await expect(page.getByText("invalid, expired, or already used")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Activate account" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create and activate account" })).toHaveCount(0);
 });
 
 async function latestRecoveryLink(request: APIRequestContext, email: string) {
   await expect.poll(async () => {
-    const response = await request.get("http://127.0.0.1:54324/api/v1/messages");
+    const response = await request.get(`${mailpitUrl}/api/v1/messages`);
     const body = await response.json() as { messages: Array<{ ID: string; To: Array<{ Address: string }> }> };
     return body.messages.some((message) => message.To.some((recipient) => recipient.Address === email));
   }).toBe(true);
-  const response = await request.get("http://127.0.0.1:54324/api/v1/messages");
+  const response = await request.get(`${mailpitUrl}/api/v1/messages`);
   const body = await response.json() as { messages: Array<{ ID: string; To: Array<{ Address: string }> }> };
   const message = body.messages.find((item) => item.To.some((recipient) => recipient.Address === email));
   if (!message) throw new Error("Recovery message not found.");
-  const detailResponse = await request.get(`http://127.0.0.1:54324/api/v1/message/${message.ID}`);
+  const detailResponse = await request.get(`${mailpitUrl}/api/v1/message/${message.ID}`);
   const detail = await detailResponse.json() as { HTML?: string; Text?: string };
   const decoded = (detail.HTML ?? detail.Text ?? "").replaceAll("&amp;", "&");
-  const match = decoded.match(/https?:\/\/127\.0\.0\.1:54321\/auth\/v1\/verify[^\s"'<]+/);
+  const match = decoded.match(/https?:\/\/(?:127\.0\.0\.1|localhost):\d{2,5}\/auth\/v1\/verify[^\s"'<]+/);
   if (!match) throw new Error("Recovery verification URL not found in Mailpit message.");
   return match[0];
 }

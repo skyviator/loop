@@ -1609,15 +1609,17 @@ select extensions.lives_ok(
   'a new legitimate staff invite follows expiry plus explicit revocation'
 );
 select extensions.lives_ok(
-  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
-    values ('a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'guardian',
-      gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
+  $$select public.create_invitation(
+    'a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'guardian',
+    gen_random_bytes(32), now() + interval '1 day',
+    'a0000000-0000-0000-0000-000000000030', 'Parent', false)$$,
   'Guardian invitation remains independent of a pending staff invitation'
 );
 select pg_temp.throws_any(
-  $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
-    values ('a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'guardian',
-      gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
+  $$select public.create_invitation(
+    'a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'guardian',
+    gen_random_bytes(32), now() + interval '1 day',
+    'a0000000-0000-0000-0000-000000000030', 'Parent', false)$$,
   'existing role-scoped pending Guardian duplicate rule remains unchanged'
 );
 select pg_temp.throws_any(
@@ -1648,6 +1650,171 @@ select extensions.ok(
     where entity_table = 'invitations' and school_id = 'a0000000-0000-0000-0000-000000000001') >= 7,
   'staff invitation creation and revocation append reduced school audit records'
 );
+
+-- Production invitation functions expire stale rows transactionally, bind
+-- guardian context server-side, and serialize safe reissue operations.
+insert into public.invitations (
+  school_id, invited_email, invited_role, token_hash, created_at, expires_at, invited_by_user_id
+) values (
+  'a0000000-0000-0000-0000-000000000001', 'automatic-expiry@loop.test', 'teacher',
+  extensions.digest('automatic-expiry-old-token', 'sha256'), now() - interval '2 days', now() - interval '1 day',
+  '10000000-0000-0000-0000-000000000001'
+);
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok(
+  $$select public.create_invitation(
+    'a0000000-0000-0000-0000-000000000001', 'automatic-expiry@loop.test', 'school_admin',
+    extensions.digest('automatic-expiry-new-token', 'sha256'), now() + interval '7 days')$$,
+  'authorized creation expires a stale conflicting staff invitation and creates its replacement'
+);
+select extensions.is(
+  (select count(*)::integer from public.invitations where invited_email = 'automatic-expiry@loop.test' and status = 'expired'),
+  1,
+  'stale pending invitation is recorded as expired'
+);
+select extensions.is(
+  (select count(*)::integer from public.invitations where invited_email = 'automatic-expiry@loop.test' and status = 'pending'),
+  1,
+  'exactly one replacement remains pending after expiry cleanup'
+);
+select pg_temp.throws_any(
+  $$select public.create_invitation(
+    'b0000000-0000-0000-0000-000000000001', 'cross-school-function@loop.test', 'teacher',
+    gen_random_bytes(32), now() + interval '7 days')$$,
+  'School Admin cannot use the invitation function across tenants'
+);
+select pg_temp.throws_any(
+  $$select public.create_invitation(
+    'a0000000-0000-0000-0000-000000000001', 'guardian-child-tamper@loop.test', 'guardian',
+    gen_random_bytes(32), now() + interval '7 days',
+    'b0000000-0000-0000-0000-000000000030', 'Parent', false)$$,
+  'guardian invitation cannot target a child from another school'
+);
+select extensions.lives_ok(
+  $$select public.create_invitation(
+    'a0000000-0000-0000-0000-000000000001', 'new-guardian@loop.test', 'guardian',
+    extensions.digest('guardian-production-token', 'sha256'), now() + interval '7 days',
+    'a0000000-0000-0000-0000-000000000030', 'Parent', true)$$,
+  'School Admin creates a guardian invitation with its server-side child context'
+);
+select pg_temp.throws_any(
+  $$select public.reissue_invitation(
+    (select id from public.invitations where invited_email = 'new-guardian@loop.test' and status = 'pending'),
+    extensions.digest('guardian-too-soon-token', 'sha256'), now() + interval '7 days')$$,
+  'immediate invitation reissue is rate limited'
+);
+reset role;
+
+insert into auth.users (
+  instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+) values (
+  '00000000-0000-0000-0000-000000000000',
+  '10000000-0000-0000-0000-000000000099',
+  'authenticated', 'authenticated', 'new-guardian@loop.test',
+  crypt(gen_random_uuid()::text, gen_salt('bf')), now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{"full_name":"Invited Guardian"}'::jsonb, now(), now()
+);
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000099', true);
+set local role authenticated;
+select extensions.lives_ok(
+  $$select public.redeem_invitation('guardian-production-token')$$,
+  'matching verified guardian identity redeems the valid invitation'
+);
+select extensions.is(
+  (select role::text from public.school_memberships where school_id = 'a0000000-0000-0000-0000-000000000001' and user_id = '10000000-0000-0000-0000-000000000099'),
+  'guardian',
+  'guardian activation grants exactly the invited school role'
+);
+select extensions.is(
+  (select count(*)::integer from public.child_guardians guardian
+    join public.school_memberships membership on membership.id = guardian.guardian_membership_id
+    where guardian.child_id = 'a0000000-0000-0000-0000-000000000030'
+      and membership.user_id = '10000000-0000-0000-0000-000000000099'
+      and guardian.status = 'active'),
+  1,
+  'guardian activation creates exactly the child relationship stored in the invitation'
+);
+select pg_temp.throws_any(
+  $$select public.redeem_invitation('guardian-production-token')$$,
+  'activated guardian invitation cannot be replayed'
+);
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok(
+  $$select public.create_invitation(
+    'a0000000-0000-0000-0000-000000000001', 'reissue@loop.test', 'teacher',
+    extensions.digest('reissue-obsolete-token', 'sha256'), now() + interval '7 days')$$,
+  'Teacher invitation is created for reissue testing'
+);
+reset role;
+update public.invitations set created_at = now() - interval '2 minutes'
+where invited_email = 'reissue@loop.test' and status = 'pending';
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok(
+  $$select public.reissue_invitation(
+    (select id from public.invitations where invited_email = 'reissue@loop.test' and status = 'pending'),
+    extensions.digest('reissue-current-token', 'sha256'), now() + interval '7 days')$$,
+  'reissue atomically invalidates the obsolete invitation and creates a replacement'
+);
+select extensions.is(
+  (select count(*)::integer from public.invitations where invited_email = 'reissue@loop.test' and status = 'revoked'),
+  1,
+  'obsolete reissued token is backed by a revoked invitation row'
+);
+select extensions.is(
+  (select count(*)::integer from public.invitations where invited_email = 'reissue@loop.test' and status = 'pending'),
+  1,
+  'reissue leaves exactly one valid pending replacement'
+);
+reset role;
+
+select extensions.ok(
+  not exists (
+    select 1 from public.audit_log
+    where entity_table = 'invitations'
+      and (old_values::text ilike '%token_hash%' or new_values::text ilike '%token_hash%')
+  ),
+  'invitation audit records never contain raw or hashed activation tokens'
+);
+
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.get_invitation_context(extensions.digest('automatic-expiry-new-token', 'sha256'))$$,
+  'authenticated application users cannot call the privileged invitation-context lookup'
+);
+select pg_temp.throws_any(
+  $$select public.record_invitation_delivery(
+    (select id from public.invitations where invited_email = 'automatic-expiry@loop.test' and status = 'pending'),
+    true,
+    null)$$,
+  'authenticated application users cannot forge invitation delivery state'
+);
+reset role;
+set local role service_role;
+select extensions.is(
+  (select count(*)::integer from public.get_invitation_context(extensions.digest('automatic-expiry-new-token', 'sha256'))),
+  1,
+  'service-only invitation context lookup returns the matching hashed-token row'
+);
+select extensions.lives_ok(
+  $$select public.record_invitation_delivery(
+    (select id from public.invitations where invited_email = 'automatic-expiry@loop.test' and status = 'pending'),
+    true,
+    null)$$,
+  'service-only delivery recorder accepts a provider-accepted invitation'
+);
+select extensions.is(
+  (select delivery_status::text from public.invitations where invited_email = 'automatic-expiry@loop.test' and status = 'pending'),
+  'sent',
+  'provider acceptance is recorded separately from invitation lifecycle'
+);
+reset role;
 
 select * from extensions.finish();
 rollback;

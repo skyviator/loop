@@ -20,7 +20,7 @@ function adminConfiguration() {
 
   const local = parsed.protocol === "http:"
     && (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost")
-    && parsed.port === "54321";
+    && /^\d{2,5}$/.test(parsed.port);
   const originOnly = parsed.pathname === "/" && !parsed.search && !parsed.hash && !parsed.username && !parsed.password;
   if ((!local && parsed.protocol !== "https:") || !originOnly) {
     throw new Error("Privileged server operation is unavailable.");

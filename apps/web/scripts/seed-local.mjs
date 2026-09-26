@@ -19,7 +19,7 @@ const env = Object.fromEntries(
     .map((match) => [match[1], match[2]]),
 );
 
-if (!/^http:\/\/(127\.0\.0\.1|localhost):54321$/.test(env.API_URL ?? "")) {
+if (!/^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/.test(env.API_URL ?? "")) {
   throw new Error("Local seed refused: Supabase API is not the Loop localhost stack.");
 }
 if (!env.SECRET_KEY?.startsWith("sb_secret_")) {

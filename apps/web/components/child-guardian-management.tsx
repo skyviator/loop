@@ -8,6 +8,8 @@ import {
   createInvitationAction,
   linkGuardianAction,
   moveChildEnrollmentAction,
+  reissueInvitationAction,
+  revokeInvitationAction,
   setMediaConsentAction,
   updateChildAction,
   updateGuardianLinkAction,
@@ -21,6 +23,7 @@ type Branch = { id: string; status: RecordStatus };
 type GuardianMembership = { id: string; status: RecordStatus; name: string };
 type GuardianLink = { id: string; child_id: string; guardian_membership_id: string; relationship_label: string; is_primary: boolean; status: RecordStatus };
 type Consent = { child_id: string; state: "not_recorded" | "granted" | "denied"; changed_at: string };
+type GuardianInvitation = { id: string; invited_email: string; invited_child_id: string | null; status: "pending" | "accepted" | "revoked" | "expired"; expires_at: string; delivery_status: "not_sent" | "sent" | "failed" };
 
 function SubmitButton({ children, tone = "secondary" }: { children: ReactNode; tone?: "primary" | "secondary" | "danger" }) {
   const { pending } = useFormStatus();
@@ -122,13 +125,14 @@ function ClassroomMove({ child, currentClassroom, activeClassrooms }: { child: C
   </div>;
 }
 
-function ChildProfile({ child, currentEnrollment, activeClassrooms, classroomById, guardianLinks, guardianById, consent, childLimitReached }: {
+function ChildProfile({ child, currentEnrollment, activeClassrooms, classroomById, guardianLinks, guardianById, guardianInvitations, consent, childLimitReached }: {
   child: Child;
   currentEnrollment?: Enrollment;
   activeClassrooms: Classroom[];
   classroomById: Map<string, Classroom>;
   guardianLinks: GuardianLink[];
   guardianById: Map<string, GuardianMembership>;
+  guardianInvitations: GuardianInvitation[];
   consent?: Consent;
   childLimitReached: boolean;
 }) {
@@ -195,10 +199,20 @@ function ChildProfile({ child, currentEnrollment, activeClassrooms, classroomByI
       <details className="compact-editor"><summary>Invite a new guardian</summary>
         <form action={createInvitationAction} className="form-stack child-compact-form">
           <input type="hidden" name="role" value="guardian" />
+          <input type="hidden" name="child_id" value={child.id} />
           <label className="field"><span>Email</span><input type="email" name="email" required /></label>
-          <p className="child-action-note">This creates an invitation record only. Production email delivery is not configured; link the guardian after their invitation is activated.</p>
-          <SubmitButton>Create guardian invitation</SubmitButton>
+          <label className="field"><span>Relationship</span><input name="relationship_label" defaultValue="Parent" required maxLength={50} /></label>
+          <label className="check-field"><input type="checkbox" name="is_primary" /> Primary guardian</label>
+          <p className="child-action-note">Activation creates the guardian membership and this child link together. The email never includes child details.</p>
+          <SubmitButton>Send guardian invitation</SubmitButton>
         </form>
+        {guardianInvitations.map((invite) => <div className="person-row" key={invite.id}>
+          <span className="break-all">{invite.invited_email}<small>{invite.status === "accepted" ? "Activated" : invite.status} · {invite.delivery_status === "sent" ? "Email accepted" : invite.delivery_status === "failed" ? "Delivery failed" : "Not sent"}</small></span>
+          <div className="inline-actions">
+            {(invite.status === "pending" || invite.status === "expired") ? <form action={reissueInvitationAction}><input type="hidden" name="invitation_id" value={invite.id} /><SubmitButton>Reissue</SubmitButton></form> : null}
+            {invite.status === "pending" ? <form action={revokeInvitationAction}><input type="hidden" name="invitation_id" value={invite.id} /><SubmitButton>Revoke</SubmitButton></form> : null}
+          </div>
+        </div>)}
       </details>
     </section>
 
@@ -215,13 +229,14 @@ function ChildProfile({ child, currentEnrollment, activeClassrooms, classroomByI
   </div>;
 }
 
-export function ChildGuardianManagement({ roster, enrollments, classrooms, branches, guardians, guardianLinks, consents, today, childLimitReached }: {
+export function ChildGuardianManagement({ roster, enrollments, classrooms, branches, guardians, guardianLinks, guardianInvitations, consents, today, childLimitReached }: {
   roster: Child[];
   enrollments: Enrollment[];
   classrooms: Classroom[];
   branches: Branch[];
   guardians: GuardianMembership[];
   guardianLinks: GuardianLink[];
+  guardianInvitations: GuardianInvitation[];
   consents: Consent[];
   today: string;
   childLimitReached: boolean;
@@ -280,13 +295,14 @@ export function ChildGuardianManagement({ roster, enrollments, classrooms, branc
       </div>
 
       {selectedChild ? <ChildProfile
-        key={selectedChild.id}
+        key={`${selectedChild.id}:${relationships.consentByChild.get(selectedChild.id)?.state ?? "not_recorded"}`}
         child={selectedChild}
         currentEnrollment={relationships.currentEnrollmentByChild.get(selectedChild.id)}
         activeClassrooms={relationships.activeClassrooms}
         classroomById={relationships.classroomById}
         guardianLinks={relationships.guardianLinksByChild.get(selectedChild.id) ?? []}
         guardianById={relationships.guardianById}
+        guardianInvitations={guardianInvitations.filter((invite) => invite.invited_child_id === selectedChild.id)}
         consent={relationships.consentByChild.get(selectedChild.id)}
         childLimitReached={childLimitReached}
       /> : <div className="child-empty-profile"><strong>{roster.length ? "No matching child" : "Add the first child"}</strong><span>{roster.length ? "Try another preferred name." : "Their profile and guardian links will appear here."}</span></div>}

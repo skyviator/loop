@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { emailAddress, oneOf, requiredText, uuid, ValidationError } from "@loop/validation";
 
 import { requireViewer } from "@/lib/auth";
+import { deliverInvitation } from "@/lib/invitations/server";
 import { schedulePushDispatch } from "@/lib/push/schedule";
 import { createClient } from "@/lib/supabase/server";
 
@@ -30,6 +31,8 @@ function optionalUuid(value: FormDataEntryValue | null, label: string) {
 }
 
 export type ActionState = { status: "idle" | "success" | "error"; message: string; saved?: number };
+
+type InvitationRole = "school_admin" | "teacher" | "guardian";
 
 function expectedActionError(error: unknown, fallback: string): ActionState {
   if (error instanceof ValidationError) return { status: "error", message: error.message };
@@ -153,24 +156,62 @@ export async function linkGuardianAction(formData: FormData) {
   revalidatePath("/school");
 }
 
+async function issueInvitation(input: {
+  schoolId: string;
+  email: string;
+  role: InvitationRole;
+  childId?: string;
+  relationshipLabel?: string;
+  isPrimary?: boolean;
+}) {
+  const token = randomBytes(24).toString("base64url");
+  const tokenHash = `\\x${createHash("sha256").update(token).digest("hex")}`;
+  const expiresAt = new Date(Date.now() + 7 * 86_400_000).toISOString();
+  const supabase = await createClient();
+  const { data: invitationId, error } = await supabase.rpc("create_invitation", {
+    invitation_school_id: input.schoolId,
+    invitation_email: input.email,
+    invitation_role: input.role,
+    invitation_token_hash: tokenHash,
+    invitation_expires_at: expiresAt,
+    invitation_child_id: input.childId ?? undefined,
+    invitation_relationship_label: input.relationshipLabel ?? undefined,
+    invitation_is_primary: input.isPrimary ?? false,
+  });
+  if (error || !invitationId) {
+    if (error?.code === "23505") throw new Error("A pending invitation already exists for this email.");
+    throw new Error("The invitation could not be created.");
+  }
+  const school = await supabase.from("schools").select("name").eq("id", input.schoolId).single();
+  if (school.error) throw new Error("The invitation was saved, but delivery could not be prepared.");
+  const delivery = await deliverInvitation({
+    invitationId,
+    token,
+    to: input.email,
+    role: input.role,
+    schoolName: school.data.name,
+    expiresAt,
+  });
+  if (delivery.status === "preview") return delivery.activationUrl;
+  if (delivery.status === "accepted") return "Invitation email accepted for delivery.";
+  return "Invitation saved, but email delivery failed. Reissue it after checking the email provider.";
+}
+
 export async function createInvitationAction(formData: FormData) {
   const viewer = await requireViewer(["super_admin", "school_admin"]);
   const schoolId = viewer.role === "super_admin" ? uuid(formData.get("school_id"), "School") : viewer.schoolId!;
   const role = oneOf(formData.get("role"), ["school_admin", "teacher", "guardian"] as const, "Role");
   if (viewer.role === "super_admin" && role !== "school_admin") throw new Error("Platform administrators may only create the first school administrator invitation.");
-  const email = emailAddress(formData.get("email"));
-  const token = randomBytes(24).toString("base64url");
-  const tokenHash = `\\x${createHash("sha256").update(token).digest("hex")}`;
-  const supabase = await createClient();
-  const { error } = await supabase.from("invitations").insert({
-    school_id: schoolId, invited_email: email, invited_role: role, token_hash: tokenHash,
-    expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(), invited_by_user_id: viewer.userId,
+  const message = await issueInvitation({
+    schoolId,
+    role,
+    email: emailAddress(formData.get("email")),
+    childId: role === "guardian" ? uuid(formData.get("child_id"), "Child") : undefined,
+    relationshipLabel: role === "guardian" ? requiredText(formData.get("relationship_label"), "Relationship", 50) : undefined,
+    isPrimary: role === "guardian" && formBoolean(formData.get("is_primary")),
   });
-  if (error) throw new Error(error.message);
 
   const returnTo = viewer.role === "super_admin" ? "/platform" : "/school";
-  const isLocal = process.env.NODE_ENV === "development" && /^http:\/\/(127\.0\.0\.1|localhost):54321$/.test(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "");
-  const message = isLocal ? `http://127.0.0.1:3000/invite?token=${token}` : "Invitation created. Production email delivery is not configured in this step.";
   redirect(`${returnTo}?invite=${encodeURIComponent(message)}`);
 }
 
@@ -178,21 +219,53 @@ export async function createStaffInvitationAction(formData: FormData) {
   const viewer = await requireViewer(["school_admin"]);
   const role = oneOf(formData.get("role"), ["teacher", "school_admin"] as const, "Staff role");
   const email = emailAddress(formData.get("email"));
-  const token = randomBytes(24).toString("base64url");
-  const tokenHash = `\\x${createHash("sha256").update(token).digest("hex")}`;
-  const { error } = await (await createClient()).from("invitations").insert({
-    school_id: viewer.schoolId!, invited_email: email, invited_role: role, token_hash: tokenHash,
-    expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(), invited_by_user_id: viewer.userId,
-  });
-  if (error) {
-    const message = error.code === "23505"
-      ? "A pending staff invitation already exists for this email. Revoke it before creating another."
+  let message: string;
+  try {
+    message = await issueInvitation({ schoolId: viewer.schoolId!, email, role });
+  } catch (error) {
+    const failure = error instanceof Error && error.message === "A pending invitation already exists for this email."
+      ? "A pending staff invitation already exists for this email. Revoke or reissue it instead."
       : "The staff invitation could not be created.";
-    redirect(`/school?staffError=${encodeURIComponent(message)}#staff-invitations`);
+    redirect(`/school?staffError=${encodeURIComponent(failure)}#staff-invitations`);
   }
-  const isLocal = process.env.NODE_ENV === "development" && /^http:\/\/(127\.0\.0\.1|localhost):54321$/.test(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "");
-  const message = isLocal ? `http://127.0.0.1:3000/invite?token=${token}` : "Invitation created. Production email delivery is not configured in this step.";
   redirect(`/school?invite=${encodeURIComponent(message)}#staff-invitations`);
+}
+
+export async function reissueInvitationAction(formData: FormData) {
+  const viewer = await requireViewer(["school_admin", "super_admin"]);
+  const invitationId = uuid(formData.get("invitation_id"), "Invitation");
+  const supabase = await createClient();
+  let query = supabase.from("invitations").select("id, school_id, invited_email, invited_role, expires_at, schools(name)").eq("id", invitationId);
+  if (viewer.role === "school_admin") query = query.eq("school_id", viewer.schoolId!);
+  const existing = await query.maybeSingle();
+  if (existing.error || !existing.data) throw new Error("The invitation is unavailable.");
+
+  const token = randomBytes(24).toString("base64url");
+  const expiresAt = new Date(Date.now() + 7 * 86_400_000).toISOString();
+  const { data: replacementId, error } = await supabase.rpc("reissue_invitation", {
+    target_invitation_id: invitationId,
+    replacement_token_hash: `\\x${createHash("sha256").update(token).digest("hex")}`,
+    replacement_expires_at: expiresAt,
+  });
+  const returnTo = viewer.role === "super_admin" ? "/platform" : "/school";
+  if (error || !replacementId) {
+    redirect(`${returnTo}?inviteError=${encodeURIComponent("Wait at least one minute after the last attempt before reissuing this invitation.")}`);
+  }
+  const delivery = await deliverInvitation({
+    invitationId: replacementId,
+    token,
+    to: existing.data.invited_email,
+    role: existing.data.invited_role,
+    schoolName: existing.data.schools?.name ?? "your school",
+    expiresAt,
+  });
+  const message = delivery.status === "preview"
+    ? delivery.activationUrl
+    : delivery.status === "accepted"
+      ? "Replacement invitation email accepted for delivery. The old link is no longer valid."
+      : "Replacement invitation saved, but email delivery failed. The old link is no longer valid.";
+  const base = viewer.role === "super_admin" ? "/platform" : "/school";
+  redirect(`${base}?invite=${encodeURIComponent(message)}`);
 }
 
 export async function revokeInvitationAction(formData: FormData) {

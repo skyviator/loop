@@ -1,5 +1,5 @@
 import { AppShell, Stat, StatusNote } from "@/components/app-shell";
-import { createBranchAction, createClassroomAction, createInvitationAction, createSchoolAction, setFeatureAction, setPlanFeatureAction, updatePlanAction, updateSchoolPlatformAction } from "@/app/actions/core";
+import { createBranchAction, createClassroomAction, createInvitationAction, createSchoolAction, reissueInvitationAction, revokeInvitationAction, setFeatureAction, setPlanFeatureAction, updatePlanAction, updateSchoolPlatformAction } from "@/app/actions/core";
 import { requireViewer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -10,7 +10,7 @@ const nav = [
   { href: "/platform#audit", label: "Audit", icon: "clock" as const },
 ];
 
-export default async function PlatformPage({ searchParams }: { searchParams: Promise<{ school?: string; invite?: string }> }) {
+export default async function PlatformPage({ searchParams }: { searchParams: Promise<{ school?: string; invite?: string; inviteError?: string }> }) {
   await requireViewer(["super_admin"]);
   const state = await searchParams;
   const supabase = await createClient();
@@ -22,7 +22,7 @@ export default async function PlatformPage({ searchParams }: { searchParams: Pro
     supabase.from("school_feature_settings").select("school_id, feature_key, is_enabled"),
     supabase.from("branches").select("id, school_id, name, status").order("name"),
     supabase.from("classrooms").select("id, school_id, branch_id, name, status").order("name"),
-    supabase.from("invitations").select("id, school_id, invited_email, status, expires_at").eq("invited_role", "school_admin").order("created_at", { ascending: false }),
+    supabase.from("invitations").select("id, school_id, invited_email, status, expires_at, delivery_status").eq("invited_role", "school_admin").order("created_at", { ascending: false }),
     supabase.from("audit_log").select("id, occurred_at, action, entity_table, school_id").order("occurred_at", { ascending: false }).limit(8),
   ]);
   const selected = schools.data?.find((school) => school.id === state.school) ?? schools.data?.[0] ?? null;
@@ -32,11 +32,20 @@ export default async function PlatformPage({ searchParams }: { searchParams: Pro
   const selectedInvites = invitations.data?.filter((invite) => invite.school_id === selected?.id) ?? [];
   const planAllows = new Map(planFeatures.data?.filter((item) => item.plan_id === plan?.id).map((item) => [item.feature_key, item.is_allowed]));
   const schoolEnabled = new Map(schoolSettings.data?.filter((item) => item.school_id === selected?.id).map((item) => [item.feature_key, item.is_enabled]));
+  const localInviteUrl = state.invite && /^http:\/\/(127\.0\.0\.1|localhost):3000\/invite\?token=[A-Za-z0-9_-]{32}$/.test(state.invite) ? state.invite : null;
+  const invitationMessage = [
+    "Invitation email accepted for delivery.",
+    "Invitation saved, but email delivery failed. Reissue it after checking the email provider.",
+    "Replacement invitation email accepted for delivery. The old link is no longer valid.",
+    "Replacement invitation saved, but email delivery failed. The old link is no longer valid.",
+  ].includes(state.invite ?? "") ? state.invite : null;
 
   return (
     <AppShell eyebrow="Loop administration" title="Schools" nav={nav}>
       <StatusNote>Platform setup excludes child, attendance, and care data by design.</StatusNote>
-      {state.invite ? <StatusNote tone="success">Local-only invite URL: <a className="text-link break-all" href={state.invite}>{state.invite}</a></StatusNote> : null}
+      {localInviteUrl ? <StatusNote tone="success">Local-only invite URL: <a className="text-link break-all" href={localInviteUrl}>{localInviteUrl}</a></StatusNote> : null}
+      {invitationMessage ? <StatusNote tone={invitationMessage.includes("failed") ? "warning" : "success"}>{invitationMessage}</StatusNote> : null}
+      {state.inviteError === "Wait at least one minute after the last attempt before reissuing this invitation." ? <StatusNote tone="warning">{state.inviteError}</StatusNote> : null}
       <div className="split-layout">
         <section className="section-panel">
           <div className="section-heading"><div><p className="eyebrow">Organisation</p><h2>Schools</h2></div><span className="count-label">{schools.data?.length ?? 0} total</span></div>
@@ -55,7 +64,7 @@ export default async function PlatformPage({ searchParams }: { searchParams: Pro
             <div className="detail-block"><h3>Starter structure</h3>{selectedBranches.map((branch) => <div className="structure-row" key={branch.id}><strong>{branch.name}</strong><span>{selectedClassrooms.filter((room) => room.branch_id === branch.id).map((room) => room.name).join(", ") || "No classrooms"}</span></div>)}
               <div className="inline-editors"><details className="editor"><summary>Add branch</summary><form action={createBranchAction} className="form-stack"><input type="hidden" name="school_id" value={selected.id} /><label className="field"><span>Branch name</span><input name="name" required /></label><button className="button button-secondary" type="submit">Add branch</button></form></details><details className="editor"><summary>Add classroom</summary><form action={createClassroomAction} className="form-stack"><input type="hidden" name="school_id" value={selected.id} /><label className="field"><span>Branch</span><select name="branch_id">{selectedBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label><label className="field"><span>Classroom name</span><input name="name" required /></label><button className="button button-secondary" type="submit">Add classroom</button></form></details></div>
             </div>
-            <div className="detail-block"><h3>First administrator</h3><form action={createInvitationAction} className="form-grid"><input type="hidden" name="school_id" value={selected.id} /><input type="hidden" name="role" value="school_admin" /><label className="field"><span>Email</span><input name="email" type="email" required /></label><button className="button button-accent" type="submit">Create invitation</button></form>{selectedInvites.map((invite) => <p className="meta" key={invite.id}>{invite.invited_email} · {invite.status}</p>)}</div>
+            <div className="detail-block"><h3>First administrator</h3><form action={createInvitationAction} className="form-grid"><input type="hidden" name="school_id" value={selected.id} /><input type="hidden" name="role" value="school_admin" /><label className="field"><span>Email</span><input name="email" type="email" required /></label><button className="button button-accent" type="submit">Send invitation</button></form>{selectedInvites.map((invite) => <div className="person-row" key={invite.id}><span className="break-all">{invite.invited_email}<small>{invite.status === "accepted" ? "activated" : invite.status} · {invite.delivery_status === "sent" ? "email accepted" : invite.delivery_status === "failed" ? "delivery failed" : "not sent"}</small></span><div className="inline-actions">{(invite.status === "pending" || invite.status === "expired") ? <form action={reissueInvitationAction}><input type="hidden" name="invitation_id" value={invite.id} /><button className="text-button">Reissue</button></form> : null}{invite.status === "pending" ? <form action={revokeInvitationAction}><input type="hidden" name="invitation_id" value={invite.id} /><button className="text-button danger-text">Revoke</button></form> : null}</div></div>)}</div>
             <div id="features" className="detail-block"><h3>Feature availability</h3><p className="muted">First include a feature in {plan?.label ?? "the plan"}; then choose whether this school has it enabled.</p><div className="feature-entitlement-head"><span>Feature</span><span>In plan</span><span>School enabled</span></div><div className="feature-list">{features.data?.map((feature) => { const allowed = planAllows.get(feature.key) ?? false; return <div className="feature-entitlement-row" key={feature.key}><span><strong>{feature.label}</strong><small>{feature.category}</small></span>{plan ? <form action={setPlanFeatureAction}><input type="hidden" name="plan_id" value={plan.id} /><input type="hidden" name="feature_key" value={feature.key} /><label className="check-field"><input aria-label={`${feature.label} included in plan`} type="checkbox" name="allowed" defaultChecked={allowed} /> Included</label><button className="text-button">Save</button></form> : <span>Unavailable</span>}<form action={setFeatureAction}><input type="hidden" name="school_id" value={selected.id} /><input type="hidden" name="feature_key" value={feature.key} /><label className="check-field"><input aria-label={`${feature.label} enabled for school`} type="checkbox" name="enabled" defaultChecked={schoolEnabled.get(feature.key) ?? false} disabled={!allowed} /> Enabled</label><button className="text-button" disabled={!allowed}>Save</button></form></div>; })}</div></div>
           </> : <p className="empty-state">Select or create a school to configure it.</p>}
         </section>

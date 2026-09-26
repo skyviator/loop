@@ -18,7 +18,7 @@ import { createClient } from "@/lib/supabase/server";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-export default async function SchoolPage({ searchParams }: { searchParams: Promise<{ invite?: string; membershipError?: string; staffError?: string }> }) {
+export default async function SchoolPage({ searchParams }: { searchParams: Promise<{ invite?: string; inviteError?: string; membershipError?: string; staffError?: string }> }) {
   const viewer = await requireViewer(["school_admin"]);
   const state = await searchParams;
   const supabase = await createClient();
@@ -33,7 +33,7 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
     supabase.from("classrooms").select("id, branch_id, name, status").eq("school_id", schoolId).order("name"),
     supabase.from("classroom_staff_assignments").select("id, classroom_id, membership_id, status, starts_on, ends_on").eq("school_id", schoolId),
     supabase.from("child_guardians").select("id, child_id, guardian_membership_id, relationship_label, is_primary, status").eq("school_id", schoolId),
-    supabase.from("invitations").select("id, invited_email, invited_role, status, expires_at").eq("school_id", schoolId).order("created_at", { ascending: false }),
+    supabase.from("invitations").select("id, invited_email, invited_role, invited_child_id, status, expires_at, delivery_status, delivery_attempt_count").eq("school_id", schoolId).order("created_at", { ascending: false }),
     supabase.from("school_feature_settings").select("feature_key, is_enabled").eq("school_id", schoolId),
     supabase.from("feature_catalogue").select("key, label, category, status").order("category").order("label"),
     supabase.from("plan_features").select("plan_id, feature_key, is_allowed"),
@@ -56,15 +56,23 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: viewer.timezone }).format(new Date());
   const invitationClock = new Date().toISOString();
   const localInviteUrl = state.invite && /^http:\/\/127\.0\.0\.1:3000\/invite\?token=[A-Za-z0-9_-]+$/.test(state.invite) ? state.invite : null;
-  const invitationCreated = Boolean(localInviteUrl) || state.invite === "Invitation created. Production email delivery is not configured in this step.";
-  const staffError = state.staffError === "A pending staff invitation already exists for this email. Revoke it before creating another."
+  const invitationMessage = [
+    "Invitation email accepted for delivery.",
+    "Invitation saved, but email delivery failed. Reissue it after checking the email provider.",
+    "Replacement invitation email accepted for delivery. The old link is no longer valid.",
+    "Replacement invitation saved, but email delivery failed. The old link is no longer valid.",
+  ].includes(state.invite ?? "") ? state.invite : null;
+  const invitationCreated = Boolean(localInviteUrl) || Boolean(invitationMessage);
+  const staffError = state.staffError === "A pending staff invitation already exists for this email. Revoke or reissue it instead."
     || state.staffError === "The staff invitation could not be created." ? state.staffError : null;
+  const inviteError = state.inviteError === "Wait at least one minute after the last attempt before reissuing this invitation." ? state.inviteError : null;
   const membershipError = state.membershipError === "This is the final active School Admin. Add or reactivate another School Admin before deactivating this membership."
     || state.membershipError === "The staff membership could not be changed. Check that the school and your access are active." ? state.membershipError : null;
   const branchActive = new Map(branches.data?.map((branch) => [branch.id, branch.status === "active"]));
 
   return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Overview" nav={schoolAdminNavigation}>
-    {invitationCreated ? <StatusNote tone="success">{localInviteUrl ? <>Local-only invite URL: <a className="text-link break-all" href={localInviteUrl}>{localInviteUrl}</a></> : "Invitation created. Production email delivery is not configured in this step."}</StatusNote> : null}
+    {invitationCreated ? <StatusNote tone={invitationMessage?.includes("failed") ? "warning" : "success"}>{localInviteUrl ? <>Local-only invite URL: <a className="text-link break-all" href={localInviteUrl}>{localInviteUrl}</a></> : invitationMessage}</StatusNote> : null}
+    {inviteError ? <StatusNote tone="warning">{inviteError}</StatusNote> : null}
     {membershipError ? <StatusNote tone="warning">{membershipError}</StatusNote> : null}
     {staffError ? <StatusNote tone="warning">{staffError}</StatusNote> : null}
     <section className="overview-band"><Stat value={activeChildren.length} label="active children" /><Stat value={activeStaff.length} label="active staff" /><Stat value={branches.data?.filter((item) => item.status === "active").length ?? 0} label="branches" /><Stat value={classrooms.data?.filter((item) => item.status === "active").length ?? 0} label="classrooms" /></section>
@@ -80,6 +88,7 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
         branches={branches.data ?? []}
         guardians={(memberships.data ?? []).filter((item) => item.role === "guardian").map((item) => ({ id: item.id, status: item.status, name: item.user_profiles?.full_name ?? "Guardian" }))}
         guardianLinks={guardianLinks.data ?? []}
+        guardianInvitations={(invitations.data ?? []).filter((invite) => invite.invited_role === "guardian")}
         consents={mediaConsents.data ?? []}
         today={today}
         childLimitReached={childLimitReached}
@@ -89,7 +98,7 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
         staff={(memberships.data ?? []).filter((item) => item.role !== "guardian").map((item) => ({ id: item.id, name: item.user_profiles?.full_name ?? "Staff member", role: item.role === "teacher" ? "teacher" as const : "school_admin" as const, status: item.status }))}
         classrooms={(classrooms.data ?? []).map((room) => ({ id: room.id, name: room.name, status: room.status, branchActive: branchActive.get(room.branch_id) ?? false }))}
         assignments={assignments.data ?? []}
-        invitations={(invitations.data ?? []).filter((invite) => invite.invited_role !== "guardian").map((invite) => ({ id: invite.id, invited_email: invite.invited_email, invited_role: invite.invited_role === "teacher" ? "teacher" as const : "school_admin" as const, status: invite.status, expires_at: invite.expires_at }))}
+        invitations={(invitations.data ?? []).filter((invite) => invite.invited_role !== "guardian").map((invite) => ({ id: invite.id, invited_email: invite.invited_email, invited_role: invite.invited_role === "teacher" ? "teacher" as const : "school_admin" as const, status: invite.status, expires_at: invite.expires_at, delivery_status: invite.delivery_status, delivery_attempt_count: invite.delivery_attempt_count }))}
         clock={invitationClock}
         today={today}
       />

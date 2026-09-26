@@ -792,11 +792,20 @@ export type Database = {
           accepted_at: string | null
           accepted_by_user_id: string | null
           created_at: string
+          delivery_attempt_count: number
+          delivery_failure_category: string | null
+          delivery_last_attempted_at: string | null
+          delivery_sent_at: string | null
+          delivery_status: Database["public"]["Enums"]["invitation_delivery_status"]
           expires_at: string
+          guardian_is_primary: boolean
+          guardian_relationship_label: string | null
           id: string
           invited_by_user_id: string
+          invited_child_id: string | null
           invited_email: string
           invited_role: Database["public"]["Enums"]["school_role"]
+          reissued_from_id: string | null
           revoked_at: string | null
           school_id: string
           status: Database["public"]["Enums"]["invitation_status"]
@@ -807,11 +816,20 @@ export type Database = {
           accepted_at?: string | null
           accepted_by_user_id?: string | null
           created_at?: string
+          delivery_attempt_count?: number
+          delivery_failure_category?: string | null
+          delivery_last_attempted_at?: string | null
+          delivery_sent_at?: string | null
+          delivery_status?: Database["public"]["Enums"]["invitation_delivery_status"]
           expires_at: string
+          guardian_is_primary?: boolean
+          guardian_relationship_label?: string | null
           id?: string
           invited_by_user_id: string
+          invited_child_id?: string | null
           invited_email: string
           invited_role: Database["public"]["Enums"]["school_role"]
+          reissued_from_id?: string | null
           revoked_at?: string | null
           school_id: string
           status?: Database["public"]["Enums"]["invitation_status"]
@@ -822,11 +840,20 @@ export type Database = {
           accepted_at?: string | null
           accepted_by_user_id?: string | null
           created_at?: string
+          delivery_attempt_count?: number
+          delivery_failure_category?: string | null
+          delivery_last_attempted_at?: string | null
+          delivery_sent_at?: string | null
+          delivery_status?: Database["public"]["Enums"]["invitation_delivery_status"]
           expires_at?: string
+          guardian_is_primary?: boolean
+          guardian_relationship_label?: string | null
           id?: string
           invited_by_user_id?: string
+          invited_child_id?: string | null
           invited_email?: string
           invited_role?: Database["public"]["Enums"]["school_role"]
+          reissued_from_id?: string | null
           revoked_at?: string | null
           school_id?: string
           status?: Database["public"]["Enums"]["invitation_status"]
@@ -834,6 +861,20 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "invitations_child_school_fkey"
+            columns: ["invited_child_id", "school_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "school_id"]
+          },
+          {
+            foreignKeyName: "invitations_reissued_from_id_fkey"
+            columns: ["reissued_from_id"]
+            isOneToOne: false
+            referencedRelation: "invitations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invitations_school_id_fkey"
             columns: ["school_id"]
@@ -1727,6 +1768,19 @@ export type Database = {
         }
         Returns: string
       }
+      create_invitation: {
+        Args: {
+          invitation_child_id?: string
+          invitation_email: string
+          invitation_expires_at: string
+          invitation_is_primary?: boolean
+          invitation_relationship_label?: string
+          invitation_role: Database["public"]["Enums"]["school_role"]
+          invitation_school_id: string
+          invitation_token_hash: string
+        }
+        Returns: string
+      }
       deactivate_push_subscription: {
         Args: { subscription_endpoint: string }
         Returns: boolean
@@ -1742,6 +1796,17 @@ export type Database = {
       finalize_photo_upload: {
         Args: { actual_manifest: Json; target_reservation_id: string }
         Returns: string
+      }
+      get_invitation_context: {
+        Args: { invitation_token_hash: string }
+        Returns: {
+          expires_at: string
+          invitation_id: string
+          invited_email: string
+          invited_role: Database["public"]["Enums"]["school_role"]
+          school_name: string
+          status: Database["public"]["Enums"]["invitation_status"]
+        }[]
       }
       move_child_enrollment: {
         Args: {
@@ -1762,12 +1827,28 @@ export type Database = {
         }
         Returns: number
       }
+      record_invitation_delivery: {
+        Args: {
+          delivery_succeeded: boolean
+          failure_category?: string
+          target_invitation_id: string
+        }
+        Returns: undefined
+      }
       redeem_invitation: { Args: { invitation_token: string }; Returns: string }
       register_push_subscription: {
         Args: {
           subscription_auth: string
           subscription_endpoint: string
           subscription_p256dh: string
+        }
+        Returns: string
+      }
+      reissue_invitation: {
+        Args: {
+          replacement_expires_at: string
+          replacement_token_hash: string
+          target_invitation_id: string
         }
         Returns: string
       }
@@ -1806,6 +1887,7 @@ export type Database = {
       communication_target_scope: "school" | "branch" | "classroom"
       enrollment_status: "planned" | "active" | "completed" | "cancelled"
       feature_category: "core" | "care" | "communication" | "media"
+      invitation_delivery_status: "not_sent" | "sent" | "failed"
       invitation_status: "pending" | "accepted" | "revoked" | "expired"
       meal_outcome:
         | "ate_all"
@@ -1975,6 +2057,7 @@ export const Constants = {
       communication_target_scope: ["school", "branch", "classroom"],
       enrollment_status: ["planned", "active", "completed", "cancelled"],
       feature_category: ["core", "care", "communication", "media"],
+      invitation_delivery_status: ["not_sent", "sent", "failed"],
       invitation_status: ["pending", "accepted", "revoked", "expired"],
       meal_outcome: [
         "ate_all",

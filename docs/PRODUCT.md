@@ -28,4 +28,4 @@ Steps 3 and 4 supply the role workflows, private photos, child-contextual messag
 
 Loop Push is the primary notification system. WhatsApp notifications are not used initially; families receive the focused events above through the installed Loop experience when they explicitly enable permission on a supported device.
 
-Short video, broad offline data access/background sync, incidents workflow, billing, payments, production email delivery, production cloud resources, and deployment remain deferred. Step 6B uses only isolated disposable staging resources and adds no product functionality.
+Short video, broad offline data access/background sync, incidents workflow, billing, payments, real transactional-email provider configuration, production cloud resources, and deployment remain deferred. The production-capable invite and recovery foundation is implemented locally; provider DNS/secrets/SMTP and verified bounce handling still require separate staging rollout.

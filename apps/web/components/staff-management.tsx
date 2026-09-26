@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 import {
   assignStaffAction,
   createStaffInvitationAction,
+  reissueInvitationAction,
   revokeInvitationAction,
   updateAssignmentAction,
   updateMembershipAction,
@@ -15,7 +16,7 @@ type Status = "active" | "inactive" | "archived";
 type Staff = { id: string; name: string; role: "teacher" | "school_admin"; status: Status };
 type Classroom = { id: string; name: string; status: Status; branchActive: boolean };
 type Assignment = { id: string; membership_id: string; classroom_id: string; status: Status; starts_on: string; ends_on: string | null };
-type Invitation = { id: string; invited_email: string; invited_role: "teacher" | "school_admin"; status: "pending" | "accepted" | "revoked" | "expired"; expires_at: string };
+type Invitation = { id: string; invited_email: string; invited_role: "teacher" | "school_admin"; status: "pending" | "accepted" | "revoked" | "expired"; expires_at: string; delivery_status: "not_sent" | "sent" | "failed"; delivery_attempt_count: number };
 
 function SubmitButton({ children, tone = "secondary" }: { children: ReactNode; tone?: "secondary" | "danger" | "accent" }) {
   const { pending } = useFormStatus();
@@ -132,17 +133,21 @@ export function StaffManagement({ staff, classrooms, assignments, invitations, c
     </section>
     <section id="staff-invitations" className="section-panel staff-invitations">
       <div className="section-heading"><h2>Staff invitations</h2></div>
-      <p className="staff-note">Create an invitation record for a Teacher or School Admin. Production email delivery is not configured; no email is sent.</p>
+      <p className="staff-note">Send a seven-day invitation to a Teacher or School Admin. Failed delivery remains visible and can be safely reissued.</p>
       <form action={createStaffInvitationAction} className="form-stack">
         <label className="field"><span>Email</span><input type="email" name="email" required autoComplete="email" /></label>
         <label className="field"><span>Staff role</span><select name="role"><option value="teacher">Teacher</option><option value="school_admin">School Admin</option></select></label>
         <SubmitButton tone="accent">Create staff invitation</SubmitButton>
       </form>
       <div className="staff-invitation-list">{staffInvites.map((invite) => {
-        const displayStatus = invite.status === "expired" || invite.status === "pending" && invite.expires_at <= clock ? "Expired" : invite.status === "pending" ? "Pending" : invite.status === "accepted" ? "Accepted" : "Revoked";
+        const lifecycle = invite.status === "expired" || invite.status === "pending" && invite.expires_at <= clock ? "Expired" : invite.status === "pending" ? "Pending" : invite.status === "accepted" ? "Activated" : "Revoked";
+        const delivery = invite.delivery_status === "sent" ? "Email accepted" : invite.delivery_status === "failed" ? "Delivery failed" : "Not sent";
         return <div className="person-row staff-invitation-row" key={invite.id}>
-          <span className="break-all">{invite.invited_email}<small>{invite.invited_role === "teacher" ? "Teacher" : "School Admin"} · {displayStatus}</small></span>
-          {invite.status === "pending" ? <form action={revokeInvitationAction}><input type="hidden" name="invitation_id" value={invite.id} /><SubmitButton>Revoke</SubmitButton></form> : null}
+          <span className="break-all">{invite.invited_email}<small>{invite.invited_role === "teacher" ? "Teacher" : "School Admin"} · {lifecycle} · {delivery}{invite.delivery_attempt_count ? ` · ${invite.delivery_attempt_count} attempt` : ""}</small></span>
+          <div className="inline-actions">
+            {(invite.status === "pending" || invite.status === "expired") ? <form action={reissueInvitationAction}><input type="hidden" name="invitation_id" value={invite.id} /><SubmitButton>Reissue</SubmitButton></form> : null}
+            {invite.status === "pending" ? <form action={revokeInvitationAction}><input type="hidden" name="invitation_id" value={invite.id} /><SubmitButton>Revoke</SubmitButton></form> : null}
+          </div>
         </div>;
       })}</div>
       {!staffInvites.length ? <p className="staff-note">No staff invitations yet.</p> : null}
