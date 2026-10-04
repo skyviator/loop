@@ -177,3 +177,217 @@ test("a signed-in identity with the wrong email cannot claim an invitation", asy
   const record = await admin.from("invitations").select("status, accepted_by_user_id").eq("token_hash", tokenHash(token)).single();
   expect(record.data).toMatchObject({ status: "pending", accepted_by_user_id: null });
 });
+
+test("simultaneous different-role redemptions produce one exact membership without mixed access", async () => {
+  test.setTimeout(120_000);
+  const { schoolId, inviterId, childId } = await fixture();
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const marker = `${Date.now()}-${attempt}`;
+    const email = `invitation-race-${marker}@loop.local`;
+    const password = `Loop-race-${marker}!`;
+    const guardianToken = randomBytes(24).toString("base64url");
+    const teacherToken = randomBytes(24).toString("base64url");
+    const createdUser = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+    if (createdUser.error) throw createdUser.error;
+
+    try {
+      const invitations = await admin.from("invitations").insert([
+        {
+          school_id: schoolId,
+          invited_email: email,
+          invited_role: "guardian",
+          token_hash: tokenHash(guardianToken),
+          expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+          invited_by_user_id: inviterId,
+          invited_child_id: childId,
+          guardian_relationship_label: "Parent",
+          guardian_is_primary: true,
+        },
+        {
+          school_id: schoolId,
+          invited_email: email,
+          invited_role: "teacher",
+          token_hash: tokenHash(teacherToken),
+          expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+          invited_by_user_id: inviterId,
+          invited_child_id: null,
+          guardian_relationship_label: null,
+          guardian_is_primary: false,
+        },
+      ]).select("id, invited_role");
+      if (invitations.error) throw invitations.error;
+
+      const guardianClient = createClient(local.API_URL, local.PUBLISHABLE_KEY, { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } });
+      const teacherClient = createClient(local.API_URL, local.PUBLISHABLE_KEY, { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } });
+      const signIns = await Promise.all([
+        guardianClient.auth.signInWithPassword({ email, password }),
+        teacherClient.auth.signInWithPassword({ email, password }),
+      ]);
+      expect(signIns.every(({ error }) => error === null)).toBe(true);
+
+      const redemptions = await Promise.all([
+        guardianClient.rpc("redeem_invitation", { invitation_token: guardianToken }),
+        teacherClient.rpc("redeem_invitation", { invitation_token: teacherToken }),
+      ]);
+      expect(redemptions.filter(({ error }) => error === null)).toHaveLength(1);
+      expect(redemptions.filter(({ error }) => error !== null)).toHaveLength(1);
+
+      const invitationState = await admin
+        .from("invitations")
+        .select("id, invited_role, status, accepted_by_user_id")
+        .in("id", invitations.data.map(({ id }) => id));
+      if (invitationState.error) throw invitationState.error;
+      const accepted = invitationState.data.filter(({ status }) => status === "accepted");
+      const pending = invitationState.data.filter(({ status }) => status === "pending");
+      expect(accepted).toHaveLength(1);
+      expect(pending).toHaveLength(1);
+      expect(accepted[0]?.accepted_by_user_id).toBe(createdUser.data.user.id);
+
+      const membership = await admin
+        .from("school_memberships")
+        .select("id, role, status")
+        .eq("school_id", schoolId)
+        .eq("user_id", createdUser.data.user.id)
+        .single();
+      if (membership.error) throw membership.error;
+      expect(membership.data).toMatchObject({ role: accepted[0]?.invited_role, status: "active" });
+
+      const guardianLinks = await admin
+        .from("child_guardians")
+        .select("child_id, status")
+        .eq("guardian_membership_id", membership.data.id);
+      if (guardianLinks.error) throw guardianLinks.error;
+      if (membership.data.role === "guardian") {
+        expect(guardianLinks.data).toEqual([{ child_id: childId, status: "active" }]);
+      } else {
+        expect(guardianLinks.data).toHaveLength(0);
+      }
+    } finally {
+      await admin.from("invitations").delete().eq("school_id", schoolId).eq("invited_email", email);
+      await admin.auth.admin.deleteUser(createdUser.data.user.id);
+    }
+  }
+});
+
+test("redemption racing revocation has exactly one terminal outcome", async () => {
+  test.setTimeout(90_000);
+  const { schoolId, inviterId } = await fixture();
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const marker = `${Date.now()}-${attempt}`;
+    const email = `invitation-revoke-race-${marker}@loop.local`;
+    const password = `Loop-revoke-race-${marker}!`;
+    const token = randomBytes(24).toString("base64url");
+    const createdUser = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+    if (createdUser.error) throw createdUser.error;
+
+    try {
+      const invitation = await admin.from("invitations").insert({
+        school_id: schoolId,
+        invited_email: email,
+        invited_role: "teacher",
+        token_hash: tokenHash(token),
+        expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+        invited_by_user_id: inviterId,
+      }).select("id").single();
+      if (invitation.error) throw invitation.error;
+
+      const client = createClient(local.API_URL, local.PUBLISHABLE_KEY, { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } });
+      const signIn = await client.auth.signInWithPassword({ email, password });
+      if (signIn.error) throw signIn.error;
+
+      let redemptionPromise: ReturnType<typeof client.rpc>;
+      let revocationPromise: ReturnType<typeof admin.rpc>;
+      if (attempt % 2 === 0) {
+        redemptionPromise = client.rpc("redeem_invitation", { invitation_token: token });
+        revocationPromise = admin.rpc("revoke_invitation", { actor_user_id: inviterId, target_invitation_id: invitation.data.id });
+      } else {
+        revocationPromise = admin.rpc("revoke_invitation", { actor_user_id: inviterId, target_invitation_id: invitation.data.id });
+        redemptionPromise = client.rpc("redeem_invitation", { invitation_token: token });
+      }
+      const [redemption, revocation] = await Promise.all([redemptionPromise, revocationPromise]);
+      expect([redemption, revocation].filter(({ error }) => error === null)).toHaveLength(1);
+
+      const state = await admin.from("invitations").select("status, accepted_by_user_id, revoked_at").eq("id", invitation.data.id).single();
+      if (state.error) throw state.error;
+      const memberships = await admin.from("school_memberships").select("role, status").eq("school_id", schoolId).eq("user_id", createdUser.data.user.id);
+      if (memberships.error) throw memberships.error;
+      if (state.data.status === "accepted") {
+        expect(state.data.accepted_by_user_id).toBe(createdUser.data.user.id);
+        expect(state.data.revoked_at).toBeNull();
+        expect(memberships.data).toEqual([{ role: "teacher", status: "active" }]);
+      } else {
+        expect(state.data).toMatchObject({ status: "revoked", accepted_by_user_id: null });
+        expect(state.data.revoked_at).not.toBeNull();
+        expect(memberships.data).toHaveLength(0);
+      }
+    } finally {
+      await admin.from("invitations").delete().eq("school_id", schoolId).eq("invited_email", email);
+      await admin.auth.admin.deleteUser(createdUser.data.user.id);
+    }
+  }
+});
+
+test("redemption racing reissue cannot accept the obsolete token and create a replacement", async () => {
+  test.setTimeout(90_000);
+  const { schoolId, inviterId } = await fixture();
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const marker = `${Date.now()}-${attempt}`;
+    const email = `invitation-reissue-race-${marker}@loop.local`;
+    const password = `Loop-reissue-race-${marker}!`;
+    const token = randomBytes(24).toString("base64url");
+    const createdUser = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+    if (createdUser.error) throw createdUser.error;
+
+    try {
+      const invitation = await admin.from("invitations").insert({
+        school_id: schoolId,
+        invited_email: email,
+        invited_role: "teacher",
+        token_hash: tokenHash(token),
+        created_at: new Date(Date.now() - 120_000).toISOString(),
+        expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+        invited_by_user_id: inviterId,
+      }).select("id").single();
+      if (invitation.error) throw invitation.error;
+
+      const client = createClient(local.API_URL, local.PUBLISHABLE_KEY, { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } });
+      const signIn = await client.auth.signInWithPassword({ email, password });
+      if (signIn.error) throw signIn.error;
+
+      let redemptionPromise: ReturnType<typeof client.rpc>;
+      let reissuePromise: ReturnType<typeof admin.rpc>;
+      if (attempt % 2 === 0) {
+        redemptionPromise = client.rpc("redeem_invitation", { invitation_token: token });
+        reissuePromise = admin.rpc("reissue_invitation", { actor_user_id: inviterId, target_invitation_id: invitation.data.id });
+      } else {
+        reissuePromise = admin.rpc("reissue_invitation", { actor_user_id: inviterId, target_invitation_id: invitation.data.id });
+        redemptionPromise = client.rpc("redeem_invitation", { invitation_token: token });
+      }
+      const [redemption, reissue] = await Promise.all([redemptionPromise, reissuePromise]);
+      expect([redemption, reissue].filter(({ error }) => error === null)).toHaveLength(1);
+
+      const states = await admin.from("invitations").select("id, status, accepted_by_user_id, reissued_from_id").eq("school_id", schoolId).eq("invited_email", email);
+      if (states.error) throw states.error;
+      const original = states.data.find(({ id }) => id === invitation.data.id);
+      const replacements = states.data.filter(({ reissued_from_id }) => reissued_from_id === invitation.data.id);
+      const memberships = await admin.from("school_memberships").select("role, status").eq("school_id", schoolId).eq("user_id", createdUser.data.user.id);
+      if (memberships.error) throw memberships.error;
+      if (original?.status === "accepted") {
+        expect(original.accepted_by_user_id).toBe(createdUser.data.user.id);
+        expect(replacements).toHaveLength(0);
+        expect(memberships.data).toEqual([{ role: "teacher", status: "active" }]);
+      } else {
+        expect(original).toMatchObject({ status: "revoked", accepted_by_user_id: null });
+        expect(replacements).toHaveLength(1);
+        expect(replacements[0]).toMatchObject({ status: "pending", accepted_by_user_id: null });
+        expect(memberships.data).toHaveLength(0);
+      }
+    } finally {
+      await admin.from("invitations").delete().eq("school_id", schoolId).eq("invited_email", email);
+      await admin.auth.admin.deleteUser(createdUser.data.user.id);
+    }
+  }
+});

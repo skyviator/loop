@@ -128,17 +128,17 @@ test("staff invitation conflicts are database-race-safe and tenant scoped", asyn
     const otherSignIn = await clientOther.auth.signInWithPassword({ email: other.email, password: other.password });
     if (otherSignIn.error || !otherSignIn.data.user) throw new Error("Fictional School B Admin sign-in failed.");
     const [teacher, schoolAdmin] = await Promise.all([
-      clientA.from("invitations").insert({ school_id: schoolId, invited_email: email, invited_role: "teacher", token_hash: `\\x${randomBytes(32).toString("hex")}`, expires_at: new Date(Date.now() + 86_400_000).toISOString(), invited_by_user_id: signInA.data.user.id }),
-      clientB.from("invitations").insert({ school_id: schoolId, invited_email: email.toUpperCase(), invited_role: "school_admin", token_hash: `\\x${randomBytes(32).toString("hex")}`, expires_at: new Date(Date.now() + 86_400_000).toISOString(), invited_by_user_id: signInB.data.user.id }),
+      admin.rpc("create_invitation", { actor_user_id: signInA.data.user.id, invitation_school_id: schoolId, invitation_email: email, invitation_role: "teacher" }),
+      admin.rpc("create_invitation", { actor_user_id: signInB.data.user.id, invitation_school_id: schoolId, invitation_email: email.toUpperCase(), invitation_role: "school_admin" }),
     ]);
     expect([teacher.error, schoolAdmin.error].filter((error) => error === null)).toHaveLength(1);
     expect([teacher.error, schoolAdmin.error].filter((error) => error?.code === "23505")).toHaveLength(1);
     const schoolACount = await admin.from("invitations").select("id").eq("school_id", schoolId).eq("invited_email", email).eq("status", "pending");
     if (schoolACount.error) throw schoolACount.error;
     expect(schoolACount.data).toHaveLength(1);
-    const schoolBInvite = await clientOther.from("invitations").insert({ school_id: schoolB.data.id, invited_email: email, invited_role: "teacher", token_hash: `\\x${randomBytes(32).toString("hex")}`, expires_at: new Date(Date.now() + 86_400_000).toISOString(), invited_by_user_id: otherSignIn.data.user.id });
+    const schoolBInvite = await admin.rpc("create_invitation", { actor_user_id: otherSignIn.data.user.id, invitation_school_id: schoolB.data.id, invitation_email: email, invitation_role: "teacher" });
     expect(schoolBInvite.error).toBeNull();
-    const crossTenant = await clientA.from("invitations").insert({ school_id: schoolB.data.id, invited_email: `cross-${randomUUID()}@loop.test`, invited_role: "teacher", token_hash: `\\x${randomBytes(32).toString("hex")}`, expires_at: new Date(Date.now() + 86_400_000).toISOString(), invited_by_user_id: signInA.data.user.id });
+    const crossTenant = await admin.rpc("create_invitation", { actor_user_id: signInA.data.user.id, invitation_school_id: schoolB.data.id, invitation_email: `cross-${randomUUID()}@loop.test`, invitation_role: "teacher" });
     expect(crossTenant.error).not.toBeNull();
   } finally {
     await admin.from("invitations").delete().eq("invited_email", email);

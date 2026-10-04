@@ -337,7 +337,7 @@ select set_config('request.jwt.claim.sub', '90000000-0000-0000-0000-000000000001
 set local role authenticated;
 select extensions.lives_ok($$insert into public.branches (id, school_id, name) values ('a0000000-0000-0000-0000-000000000012', 'a0000000-0000-0000-0000-000000000001', 'Platform starter branch')$$, 'platform admin can create starter branch structure');
 select extensions.lives_ok($$insert into public.classrooms (school_id, branch_id, name) values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000012', 'Platform starter classroom')$$, 'platform admin can create starter classroom structure');
-select extensions.lives_ok($$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id) values ('b0000000-0000-0000-0000-000000000001', 'first-admin@loop.test', 'school_admin', extensions.digest('platform-admin-invite-token', 'sha256'), now() + interval '1 day', '90000000-0000-0000-0000-000000000001')$$, 'platform admin can create a first school-admin invitation');
+select pg_temp.throws_any($$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id) values ('b0000000-0000-0000-0000-000000000001', 'first-admin@loop.test', 'school_admin', extensions.digest('platform-admin-invite-token', 'sha256'), now() + interval '1 day', '90000000-0000-0000-0000-000000000001')$$, 'platform admin cannot bypass the service-only invitation creation RPC');
 select extensions.is((select count(*)::integer from public.children), 0, 'platform starter structure policy still exposes no children');
 reset role;
 
@@ -1525,11 +1525,11 @@ select extensions.is(
 -- existing pending-status model requires explicit revocation of expired rows.
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
-select extensions.lives_ok(
+select pg_temp.throws_any(
   $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
     values ('a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'teacher',
       gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
-  'School Admin can create a pending Teacher invitation'
+  'School Admin cannot directly insert a Teacher invitation'
 );
 select pg_temp.throws_any(
   $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
@@ -1543,11 +1543,11 @@ select pg_temp.throws_any(
       gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
   'duplicate same-role pending staff invitation is rejected'
 );
-select extensions.lives_ok(
+select pg_temp.throws_any(
   $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
     values ('a0000000-0000-0000-0000-000000000001', 'inverse-staff@loop.test', 'school_admin',
       gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
-  'School Admin can create a pending School Admin invitation'
+  'School Admin cannot directly insert a School Admin invitation'
 );
 select pg_temp.throws_any(
   $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
@@ -1567,17 +1567,17 @@ select extensions.ok(
     where idx.indexrelid = 'public.invitations_one_pending_staff_per_school_email'::regclass),
   'staff uniqueness predicate contains no volatile clock expression'
 );
-select extensions.lives_ok(
+select pg_temp.throws_any(
   $$update public.invitations set status = 'revoked', revoked_at = now()
     where school_id = 'a0000000-0000-0000-0000-000000000001'
       and invited_email = 'staff-conflict@loop.test' and status = 'pending'$$,
-  'authorized Admin can revoke the pending Teacher invite'
+  'School Admin cannot directly mutate invitation lifecycle state'
 );
-select extensions.lives_ok(
+select pg_temp.throws_any(
   $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
     values ('a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'school_admin',
       gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
-  'revoked invitation no longer blocks a legitimate different-role staff invite'
+  'School Admin cannot recreate invitation state through direct insert'
 );
 reset role;
 -- This is a transaction-scoped fixture: Admins cannot forge created_at.
@@ -1596,31 +1596,29 @@ select pg_temp.throws_any(
       gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
   'expired-but-pending staff invitation retains its slot until explicit revocation'
 );
-select extensions.lives_ok(
+select pg_temp.throws_any(
   $$update public.invitations set status = 'revoked', revoked_at = now()
     where school_id = 'a0000000-0000-0000-0000-000000000001'
       and invited_email = 'expired-staff@loop.test' and status = 'pending'$$,
-  'expired pending invitation can be revoked to release its slot'
+  'School Admin cannot directly revoke an expired pending invitation'
 );
-select extensions.lives_ok(
+select pg_temp.throws_any(
   $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
     values ('a0000000-0000-0000-0000-000000000001', 'expired-staff@loop.test', 'school_admin',
       gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$,
-  'a new legitimate staff invite follows expiry plus explicit revocation'
-);
-select extensions.lives_ok(
-  $$select public.create_invitation(
-    'a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'guardian',
-    gen_random_bytes(32), now() + interval '1 day',
-    'a0000000-0000-0000-0000-000000000030', 'Parent', false)$$,
-  'Guardian invitation remains independent of a pending staff invitation'
+  'School Admin cannot replace an expired invitation through direct insert'
 );
 select pg_temp.throws_any(
   $$select public.create_invitation(
-    'a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'guardian',
-    gen_random_bytes(32), now() + interval '1 day',
+    '10000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'guardian',
     'a0000000-0000-0000-0000-000000000030', 'Parent', false)$$,
-  'existing role-scoped pending Guardian duplicate rule remains unchanged'
+  'authenticated School Admin cannot call the service-only creation RPC directly'
+);
+select pg_temp.throws_any(
+  $$select public.create_invitation(
+    '10000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'guardian',
+    'a0000000-0000-0000-0000-000000000030', 'Parent', false)$$,
+  'creation RPC remains unavailable through raw authenticated API calls'
 );
 select pg_temp.throws_any(
   $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
@@ -1637,22 +1635,22 @@ select pg_temp.throws_any(
 reset role;
 select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
-select extensions.lives_ok(
+select pg_temp.throws_any(
   $$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id)
     values ('b0000000-0000-0000-0000-000000000001', 'staff-conflict@loop.test', 'teacher',
       gen_random_bytes(32), now() + interval '1 day', '20000000-0000-0000-0000-000000000001')$$,
-  'another school can independently invite the same normalized staff email'
+  'another School Admin also cannot directly insert invitations'
 );
 reset role;
 
 select extensions.ok(
   (select count(*)::integer from public.audit_log
-    where entity_table = 'invitations' and school_id = 'a0000000-0000-0000-0000-000000000001') >= 7,
+    where entity_table = 'invitations' and school_id = 'a0000000-0000-0000-0000-000000000001') >= 1,
   'staff invitation creation and revocation append reduced school audit records'
 );
 
--- Production invitation functions expire stale rows transactionally, bind
--- guardian context server-side, and serialize safe reissue operations.
+-- Hardened production invitation functions generate token material and expiry
+-- inside the service-only boundary while still authorizing the verified actor.
 insert into public.invitations (
   school_id, invited_email, invited_role, token_hash, created_at, expires_at, invited_by_user_id
 ) values (
@@ -1660,73 +1658,117 @@ insert into public.invitations (
   extensions.digest('automatic-expiry-old-token', 'sha256'), now() - interval '2 days', now() - interval '1 day',
   '10000000-0000-0000-0000-000000000001'
 );
-select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
-set local role authenticated;
-select extensions.lives_ok(
-  $$select public.create_invitation(
-    'a0000000-0000-0000-0000-000000000001', 'automatic-expiry@loop.test', 'school_admin',
-    extensions.digest('automatic-expiry-new-token', 'sha256'), now() + interval '7 days')$$,
-  'authorized creation expires a stale conflicting staff invitation and creates its replacement'
-);
-select extensions.is(
-  (select count(*)::integer from public.invitations where invited_email = 'automatic-expiry@loop.test' and status = 'expired'),
-  1,
-  'stale pending invitation is recorded as expired'
-);
-select extensions.is(
-  (select count(*)::integer from public.invitations where invited_email = 'automatic-expiry@loop.test' and status = 'pending'),
-  1,
-  'exactly one replacement remains pending after expiry cleanup'
-);
-select pg_temp.throws_any(
-  $$select public.create_invitation(
-    'b0000000-0000-0000-0000-000000000001', 'cross-school-function@loop.test', 'teacher',
-    gen_random_bytes(32), now() + interval '7 days')$$,
-  'School Admin cannot use the invitation function across tenants'
-);
-select pg_temp.throws_any(
-  $$select public.create_invitation(
-    'a0000000-0000-0000-0000-000000000001', 'guardian-child-tamper@loop.test', 'guardian',
-    gen_random_bytes(32), now() + interval '7 days',
-    'b0000000-0000-0000-0000-000000000030', 'Parent', false)$$,
-  'guardian invitation cannot target a child from another school'
-);
-select extensions.lives_ok(
-  $$select public.create_invitation(
-    'a0000000-0000-0000-0000-000000000001', 'new-guardian@loop.test', 'guardian',
-    extensions.digest('guardian-production-token', 'sha256'), now() + interval '7 days',
-    'a0000000-0000-0000-0000-000000000030', 'Parent', true)$$,
-  'School Admin creates a guardian invitation with its server-side child context'
-);
-select pg_temp.throws_any(
-  $$select public.reissue_invitation(
-    (select id from public.invitations where invited_email = 'new-guardian@loop.test' and status = 'pending'),
-    extensions.digest('guardian-too-soon-token', 'sha256'), now() + interval '7 days')$$,
-  'immediate invitation reissue is rate limited'
+
+set local role service_role;
+create temporary table pg_temp.secure_creation as
+select * from public.create_invitation(
+  '10000000-0000-0000-0000-000000000001',
+  'a0000000-0000-0000-0000-000000000001',
+  'automatic-expiry@loop.test',
+  'school_admin'
 );
 reset role;
+grant select on pg_temp.secure_creation to authenticated;
+
+select extensions.is((select length(invitation_token)::integer from pg_temp.secure_creation), 32, 'creation generates a 192-bit URL-safe token');
+select extensions.ok((select invitation_token ~ '^[A-Za-z0-9_-]{32}$' from pg_temp.secure_creation), 'generated token uses the expected URL-safe encoding');
+select extensions.ok(
+  (select invitation_expires_at between now() + interval '6 days 23 hours 59 minutes' and now() + interval '7 days 1 minute' from pg_temp.secure_creation),
+  'creation fixes expiry at seven days instead of accepting caller input'
+);
+select extensions.ok(
+  pg_catalog.pg_get_functiondef('private.create_invitation(uuid,uuid,text,public.school_role,uuid,text,boolean)'::regprocedure)
+    like '%gen_random_bytes(24)%',
+  'trusted creation uses exactly 24 cryptographically random bytes'
+);
+select extensions.ok(
+  pg_catalog.pg_get_function_identity_arguments('public.create_invitation(uuid,uuid,text,public.school_role,uuid,text,boolean)'::regprocedure)
+    not ilike '%bytea%'
+  and pg_catalog.pg_get_function_identity_arguments('public.create_invitation(uuid,uuid,text,public.school_role,uuid,text,boolean)'::regprocedure)
+    not ilike '%timestamp%',
+  'creation API accepts neither a caller-selected token hash nor expiry'
+);
+select extensions.is(
+  (select count(*)::integer from public.invitations invitation
+    join pg_temp.secure_creation created on invitation.id = created.invitation_id
+    where invitation.token_hash = extensions.digest(created.invitation_token, 'sha256')),
+  1,
+  'only the generated token digest is persisted'
+);
+select extensions.ok(
+  (select to_jsonb(invitation)::text not like '%' || created.invitation_token || '%'
+   from public.invitations invitation
+   join pg_temp.secure_creation created on invitation.id = created.invitation_id),
+  'plaintext token is absent from the invitation row'
+);
+select extensions.is(
+  (select actor_user_id from public.audit_log where entity_table = 'invitations' and action = 'invitations.insert' and entity_id = (select invitation_id from pg_temp.secure_creation)),
+  '10000000-0000-0000-0000-000000000001'::uuid,
+  'service-only creation preserves the validated School Admin as the audit actor'
+);
+select extensions.is((select count(*)::integer from public.invitations where invited_email = 'automatic-expiry@loop.test' and status = 'expired'), 1, 'stale pending invitation is expired transactionally');
+select extensions.is((select count(*)::integer from public.invitations where invited_email = 'automatic-expiry@loop.test' and status = 'pending'), 1, 'creation leaves exactly one valid pending staff invitation');
+
+set local role service_role;
+select pg_temp.throws_any(
+  $$select public.create_invitation('10000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'cross-school-function@loop.test', 'teacher')$$,
+  'School Admin cannot use the service operation across tenants'
+);
+select pg_temp.throws_any(
+  $$select public.create_invitation('10000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'guardian-child-tamper@loop.test', 'guardian', 'b0000000-0000-0000-0000-000000000030', 'Parent', false)$$,
+  'Guardian invitation cannot bind a child from another school'
+);
+select pg_temp.throws_any(
+  $$select public.create_invitation('90000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'platform-teacher@loop.test', 'teacher')$$,
+  'Platform Super Admin cannot create Teacher invitations'
+);
+select pg_temp.throws_any(
+  $$select public.create_invitation('90000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'platform-guardian@loop.test', 'guardian', 'a0000000-0000-0000-0000-000000000030', 'Parent', false)$$,
+  'Platform Super Admin cannot create Guardian invitations'
+);
+select pg_temp.throws_any(
+  $$select public.create_invitation('10000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'teacher-created@loop.test', 'teacher')$$,
+  'Teacher cannot create invitations through the service operation'
+);
+select pg_temp.throws_any(
+  $$select public.create_invitation('10000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001', 'guardian-created@loop.test', 'teacher')$$,
+  'Guardian cannot create invitations through the service operation'
+);
+create temporary table pg_temp.guardian_creation as
+select * from public.create_invitation(
+  '10000000-0000-0000-0000-000000000001',
+  'a0000000-0000-0000-0000-000000000001',
+  'new-guardian@loop.test',
+  'guardian',
+  'a0000000-0000-0000-0000-000000000030',
+  'Parent',
+  true
+);
+select pg_temp.throws_any(
+  $$select public.reissue_invitation('10000000-0000-0000-0000-000000000001', (select invitation_id from pg_temp.guardian_creation))$$,
+  'immediate invitation reissue remains rate limited'
+);
+reset role;
+grant select on pg_temp.guardian_creation to authenticated;
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
   raw_app_meta_data, raw_user_meta_data, created_at, updated_at
 ) values (
-  '00000000-0000-0000-0000-000000000000',
-  '10000000-0000-0000-0000-000000000099',
-  'authenticated', 'authenticated', 'new-guardian@loop.test',
-  crypt(gen_random_uuid()::text, gen_salt('bf')), now(),
-  '{"provider":"email","providers":["email"]}'::jsonb,
-  '{"full_name":"Invited Guardian"}'::jsonb, now(), now()
+  '00000000-0000-0000-0000-000000000000', '10000000-0000-0000-0000-000000000099',
+  'authenticated', 'authenticated', 'new-guardian@loop.test', crypt(gen_random_uuid()::text, gen_salt('bf')), now(),
+  '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name":"Invited Guardian"}'::jsonb, now(), now()
 );
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000099', true);
 set local role authenticated;
 select extensions.lives_ok(
-  $$select public.redeem_invitation('guardian-production-token')$$,
-  'matching verified guardian identity redeems the valid invitation'
+  $$select public.redeem_invitation((select invitation_token from pg_temp.guardian_creation))$$,
+  'matching verified Guardian identity redeems the generated token'
 );
 select extensions.is(
   (select role::text from public.school_memberships where school_id = 'a0000000-0000-0000-0000-000000000001' and user_id = '10000000-0000-0000-0000-000000000099'),
   'guardian',
-  'guardian activation grants exactly the invited school role'
+  'Guardian activation grants exactly the encoded role'
 );
 select extensions.is(
   (select count(*)::integer from public.child_guardians guardian
@@ -1735,43 +1777,110 @@ select extensions.is(
       and membership.user_id = '10000000-0000-0000-0000-000000000099'
       and guardian.status = 'active'),
   1,
-  'guardian activation creates exactly the child relationship stored in the invitation'
+  'Guardian activation creates only the encoded child relationship'
 );
 select pg_temp.throws_any(
-  $$select public.redeem_invitation('guardian-production-token')$$,
-  'activated guardian invitation cannot be replayed'
+  $$select public.redeem_invitation((select invitation_token from pg_temp.guardian_creation))$$,
+  'accepted invitation cannot be replayed'
 );
 reset role;
 
+-- Direct authenticated mutation is closed for every security-sensitive field.
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
-select extensions.lives_ok(
-  $$select public.create_invitation(
-    'a0000000-0000-0000-0000-000000000001', 'reissue@loop.test', 'teacher',
-    extensions.digest('reissue-obsolete-token', 'sha256'), now() + interval '7 days')$$,
-  'Teacher invitation is created for reissue testing'
-);
+select pg_temp.throws_any($$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id) values ('a0000000-0000-0000-0000-000000000001', 'direct-admin@loop.test', 'teacher', gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000001')$$, 'School Admin cannot directly insert invitations');
+select pg_temp.throws_any($$update public.invitations set token_hash = gen_random_bytes(32) where id = (select invitation_id from pg_temp.secure_creation)$$, 'authenticated client cannot change token hash');
+select pg_temp.throws_any($$update public.invitations set expires_at = now() + interval '100 years' where id = (select invitation_id from pg_temp.secure_creation)$$, 'authenticated client cannot change expiry');
+select pg_temp.throws_any($$update public.invitations set school_id = 'b0000000-0000-0000-0000-000000000001' where id = (select invitation_id from pg_temp.secure_creation)$$, 'authenticated client cannot change invitation school');
+select pg_temp.throws_any($$update public.invitations set invited_role = 'teacher' where id = (select invitation_id from pg_temp.secure_creation)$$, 'authenticated client cannot change invited role');
+select pg_temp.throws_any($$update public.invitations set invited_child_id = 'a0000000-0000-0000-0000-000000000030' where id = (select invitation_id from pg_temp.secure_creation)$$, 'authenticated client cannot change invited child');
+select pg_temp.throws_any($$update public.invitations set invited_email = 'tampered@loop.test' where id = (select invitation_id from pg_temp.secure_creation)$$, 'authenticated client cannot change invited email');
+select pg_temp.throws_any($$update public.invitations set status = 'revoked', revoked_at = now() where id = (select invitation_id from pg_temp.secure_creation)$$, 'authenticated client cannot change lifecycle state directly');
+select pg_temp.throws_any($$select public.create_invitation('10000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'raw-rpc@loop.test', 'teacher')$$, 'School Admin cannot call service-only creation RPC through PostgREST');
+select pg_temp.throws_any($$select public.reissue_invitation('10000000-0000-0000-0000-000000000001', (select invitation_id from pg_temp.secure_creation))$$, 'School Admin cannot call service-only reissue RPC through PostgREST');
 reset role;
-update public.invitations set created_at = now() - interval '2 minutes'
-where invited_email = 'reissue@loop.test' and status = 'pending';
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select pg_temp.throws_any($$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id) values ('a0000000-0000-0000-0000-000000000001', 'direct-teacher@loop.test', 'teacher', gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000002')$$, 'Teacher cannot directly insert invitations');
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select pg_temp.throws_any($$insert into public.invitations (school_id, invited_email, invited_role, token_hash, expires_at, invited_by_user_id) values ('a0000000-0000-0000-0000-000000000001', 'direct-guardian@loop.test', 'guardian', gen_random_bytes(32), now() + interval '1 day', '10000000-0000-0000-0000-000000000003')$$, 'Guardian cannot directly insert invitations');
+reset role;
+
+-- Narrow revocation authorizes the actor and reports a real one-row change.
+set local role service_role;
+create temporary table pg_temp.school_revoke as select * from public.create_invitation('10000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'school-revoke@loop.test', 'teacher');
+select extensions.is(public.revoke_invitation('10000000-0000-0000-0000-000000000001', (select invitation_id from pg_temp.school_revoke)), true, 'School Admin revokes an own-school invitation through the narrow operation');
+create temporary table pg_temp.cross_school_revoke as select * from public.create_invitation('20000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'cross-revoke@loop.test', 'teacher');
+select pg_temp.throws_any($$select public.revoke_invitation('10000000-0000-0000-0000-000000000001', (select invitation_id from pg_temp.cross_school_revoke))$$, 'School Admin cannot revoke another school invitation');
+create temporary table pg_temp.platform_revoke as select * from public.create_invitation('90000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'platform-revoke@loop.test', 'school_admin');
+select extensions.is(public.revoke_invitation('90000000-0000-0000-0000-000000000001', (select invitation_id from pg_temp.platform_revoke)), true, 'Platform Super Admin revocation reports success');
+select extensions.is((select status::text from public.invitations where id = (select invitation_id from pg_temp.platform_revoke)), 'revoked', 'Platform Super Admin revokes exactly the intended invitation');
+select extensions.is(
+  (select actor_user_id from public.audit_log where entity_table = 'invitations' and action = 'invitations.update' and entity_id = (select invitation_id from pg_temp.platform_revoke) order by occurred_at desc limit 1),
+  '90000000-0000-0000-0000-000000000001'::uuid,
+  'service-only revocation preserves the validated Platform Super Admin as the audit actor'
+);
+create temporary table pg_temp.role_revoke as select * from public.create_invitation('10000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'role-revoke@loop.test', 'teacher');
+select pg_temp.throws_any($$select public.revoke_invitation('10000000-0000-0000-0000-000000000002', (select invitation_id from pg_temp.role_revoke))$$, 'Teacher cannot revoke invitations');
+select pg_temp.throws_any($$select public.revoke_invitation('10000000-0000-0000-0000-000000000003', (select invitation_id from pg_temp.role_revoke))$$, 'Guardian cannot revoke invitations');
+reset role;
+grant select on pg_temp.school_revoke to authenticated;
+
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
-select extensions.lives_ok(
-  $$select public.reissue_invitation(
-    (select id from public.invitations where invited_email = 'reissue@loop.test' and status = 'pending'),
-    extensions.digest('reissue-current-token', 'sha256'), now() + interval '7 days')$$,
-  'reissue atomically invalidates the obsolete invitation and creates a replacement'
+select pg_temp.throws_any($$update public.invitations set status = 'pending', revoked_at = null where id = (select invitation_id from pg_temp.school_revoke)$$, 'revoked invitation cannot be restored to pending');
+select pg_temp.throws_any($$update public.invitations set revoked_at = null where id = (select invitation_id from pg_temp.school_revoke)$$, 'authenticated client cannot clear revoked_at');
+reset role;
+
+insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values ('00000000-0000-0000-0000-000000000000', '10000000-0000-0000-0000-000000000098', 'authenticated', 'authenticated', 'school-revoke@loop.test', crypt(gen_random_uuid()::text, gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{}'::jsonb, now(), now());
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000098', true);
+set local role authenticated;
+select pg_temp.throws_any($$select public.redeem_invitation((select invitation_token from pg_temp.school_revoke))$$, 'revoked token cannot redeem');
+reset role;
+
+-- Reissue produces the only valid replacement and never accepts caller token material.
+set local role service_role;
+create temporary table pg_temp.reissue_original as select * from public.create_invitation('10000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'reissue-secure@loop.test', 'teacher');
+select pg_temp.throws_any($$select public.reissue_invitation('10000000-0000-0000-0000-000000000001', (select invitation_id from pg_temp.reissue_original))$$, 'one-minute reissue throttle remains enforced');
+reset role;
+update public.invitations set created_at = now() - interval '2 minutes' where id = (select invitation_id from pg_temp.reissue_original);
+set local role service_role;
+create temporary table pg_temp.reissue_replacement as select * from public.reissue_invitation('10000000-0000-0000-0000-000000000001', (select invitation_id from pg_temp.reissue_original));
+reset role;
+grant select on pg_temp.reissue_original, pg_temp.reissue_replacement to authenticated;
+select extensions.ok(
+  pg_catalog.pg_get_function_identity_arguments('public.reissue_invitation(uuid,uuid)'::regprocedure) not ilike '%bytea%'
+  and pg_catalog.pg_get_function_identity_arguments('public.reissue_invitation(uuid,uuid)'::regprocedure) not ilike '%timestamp%',
+  'reissue API accepts neither caller-selected token nor expiry'
 );
+select extensions.is((select status::text from public.invitations where id = (select invitation_id from pg_temp.reissue_original)), 'revoked', 'reissue irreversibly revokes the old invitation');
+select extensions.is((select count(*)::integer from public.invitations where invited_email = 'reissue-secure@loop.test' and status = 'pending'), 1, 'replacement is the only pending invitation');
 select extensions.is(
-  (select count(*)::integer from public.invitations where invited_email = 'reissue@loop.test' and status = 'revoked'),
-  1,
-  'obsolete reissued token is backed by a revoked invitation row'
+  (select actor_user_id from public.audit_log where entity_table = 'invitations' and action = 'invitations.insert' and entity_id = (select invitation_id from pg_temp.reissue_replacement)),
+  '10000000-0000-0000-0000-000000000001'::uuid,
+  'service-only reissue preserves the validated School Admin as the replacement audit actor'
 );
-select extensions.is(
-  (select count(*)::integer from public.invitations where invited_email = 'reissue@loop.test' and status = 'pending'),
-  1,
-  'reissue leaves exactly one valid pending replacement'
-);
+
+insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values ('00000000-0000-0000-0000-000000000000', '10000000-0000-0000-0000-000000000097', 'authenticated', 'authenticated', 'reissue-secure@loop.test', crypt(gen_random_uuid()::text, gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{}'::jsonb, now(), now());
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000097', true);
+set local role authenticated;
+select pg_temp.throws_any($$select public.redeem_invitation((select invitation_token from pg_temp.reissue_original))$$, 'obsolete token cannot redeem after reissue');
+select extensions.lives_ok($$select public.redeem_invitation((select invitation_token from pg_temp.reissue_replacement))$$, 'replacement token redeems successfully');
+select pg_temp.throws_any($$select public.redeem_invitation((select invitation_token from pg_temp.reissue_replacement))$$, 'accepted replacement cannot be replayed');
+reset role;
+
+-- Explicit expiry rejection.
+insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values ('00000000-0000-0000-0000-000000000000', '10000000-0000-0000-0000-000000000096', 'authenticated', 'authenticated', 'expired-redeem@loop.test', crypt(gen_random_uuid()::text, gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{}'::jsonb, now(), now());
+insert into public.invitations (school_id, invited_email, invited_role, token_hash, created_at, expires_at, invited_by_user_id)
+values ('a0000000-0000-0000-0000-000000000001', 'expired-redeem@loop.test', 'teacher', extensions.digest('expired-redeem-token', 'sha256'), now() - interval '2 days', now() - interval '1 day', '10000000-0000-0000-0000-000000000001');
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000096', true);
+set local role authenticated;
+select pg_temp.throws_any($$select public.redeem_invitation('expired-redeem-token')$$, 'expired token cannot redeem');
 reset role;
 
 select extensions.ok(
@@ -1782,37 +1891,40 @@ select extensions.ok(
   ),
   'invitation audit records never contain raw or hashed activation tokens'
 );
+select extensions.ok(
+  not exists (
+    select 1 from public.audit_log event
+    cross join pg_temp.secure_creation created
+    where event.old_values::text like '%' || created.invitation_token || '%'
+       or event.new_values::text like '%' || created.invitation_token || '%'
+  ),
+  'invitation audit records never contain plaintext token material'
+);
 
 set local role authenticated;
 select pg_temp.throws_any(
-  $$select public.get_invitation_context(extensions.digest('automatic-expiry-new-token', 'sha256'))$$,
-  'authenticated application users cannot call the privileged invitation-context lookup'
+  $$select public.get_invitation_context(extensions.digest((select invitation_token from pg_temp.secure_creation), 'sha256'))$$,
+  'authenticated application users cannot call privileged invitation context lookup'
 );
 select pg_temp.throws_any(
-  $$select public.record_invitation_delivery(
-    (select id from public.invitations where invited_email = 'automatic-expiry@loop.test' and status = 'pending'),
-    true,
-    null)$$,
+  $$select public.record_invitation_delivery((select invitation_id from pg_temp.secure_creation), true, null)$$,
   'authenticated application users cannot forge invitation delivery state'
 );
 reset role;
 set local role service_role;
 select extensions.is(
-  (select count(*)::integer from public.get_invitation_context(extensions.digest('automatic-expiry-new-token', 'sha256'))),
+  (select count(*)::integer from public.get_invitation_context(extensions.digest((select invitation_token from pg_temp.secure_creation), 'sha256'))),
   1,
-  'service-only invitation context lookup returns the matching hashed-token row'
+  'service-only invitation context lookup returns the generated hashed-token row'
 );
 select extensions.lives_ok(
-  $$select public.record_invitation_delivery(
-    (select id from public.invitations where invited_email = 'automatic-expiry@loop.test' and status = 'pending'),
-    true,
-    null)$$,
-  'service-only delivery recorder accepts a provider-accepted invitation'
+  $$select public.record_invitation_delivery((select invitation_id from pg_temp.secure_creation), true, null)$$,
+  'service-only delivery recorder accepts provider acceptance'
 );
 select extensions.is(
-  (select delivery_status::text from public.invitations where invited_email = 'automatic-expiry@loop.test' and status = 'pending'),
+  (select delivery_status::text from public.invitations where id = (select invitation_id from pg_temp.secure_creation)),
   'sent',
-  'provider acceptance is recorded separately from invitation lifecycle'
+  'provider acceptance remains separate from invitation lifecycle'
 );
 reset role;
 

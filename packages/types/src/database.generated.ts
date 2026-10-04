@@ -1770,16 +1770,19 @@ export type Database = {
       }
       create_invitation: {
         Args: {
+          actor_user_id: string
           invitation_child_id?: string
           invitation_email: string
-          invitation_expires_at: string
           invitation_is_primary?: boolean
           invitation_relationship_label?: string
           invitation_role: Database["public"]["Enums"]["school_role"]
           invitation_school_id: string
-          invitation_token_hash: string
         }
-        Returns: string
+        Returns: {
+          invitation_expires_at: string
+          invitation_id: string
+          invitation_token: string
+        }[]
       }
       deactivate_push_subscription: {
         Args: { subscription_endpoint: string }
@@ -1845,12 +1848,12 @@ export type Database = {
         Returns: string
       }
       reissue_invitation: {
-        Args: {
-          replacement_expires_at: string
-          replacement_token_hash: string
-          target_invitation_id: string
-        }
-        Returns: string
+        Args: { actor_user_id: string; target_invitation_id: string }
+        Returns: {
+          invitation_expires_at: string
+          invitation_id: string
+          invitation_token: string
+        }[]
       }
       reserve_photo_upload: {
         Args: {
@@ -1861,6 +1864,10 @@ export type Database = {
           variant_manifest: Json
         }
         Returns: Json
+      }
+      revoke_invitation: {
+        Args: { actor_user_id: string; target_invitation_id: string }
+        Returns: boolean
       }
       set_school_membership_status: {
         Args: {
