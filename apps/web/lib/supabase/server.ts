@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 
 import type { Database } from "@loop/types";
 
+import { authCookieOptions } from "./cookie-options";
 import { noStoreFetch } from "./no-store-fetch";
 
 export async function createClient() {
@@ -12,6 +13,7 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      cookieOptions: authCookieOptions(),
       global: { fetch: noStoreFetch },
       cookies: {
         getAll() {

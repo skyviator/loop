@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import type { Database } from "@loop/types";
 
+import { authCookieOptions } from "./cookie-options";
+
 export async function updateSession(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -14,6 +16,7 @@ export async function updateSession(request: NextRequest) {
 
   let response = NextResponse.next({ request });
   const supabase = createServerClient<Database>(supabaseUrl, publishableKey, {
+    cookieOptions: authCookieOptions(),
     cookies: {
       getAll() {
         return request.cookies.getAll();
