@@ -152,35 +152,20 @@ test("invalid invitation fails closed", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Activate account" })).toHaveCount(0);
 });
 
-test("valid invitation enforces email, activates once, signs out, and protects routes", async ({ page }) => {
+test("staff invitation creation keeps the token private, signs out, and protects routes", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await signIn(page, "school_admin");
   const invitedEmail = `valid.teacher.${Date.now()}@loop.local`;
   const invitationForm = page.locator("#staff-invitations > form");
   await invitationForm.getByLabel("Email").fill(invitedEmail);
   await invitationForm.getByRole("button", { name: "Create staff invitation" }).click();
-  const invitationLink = await page.locator(".status-success a").getAttribute("href");
-  expect(invitationLink).toMatch(/^http:\/\/127\.0\.0\.1:3000\/invite\?token=/);
-  await page.getByRole("button", { name: "Sign out" }).click();
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(invitationLink!);
-  await expect(page.getByRole("button", { name: "Create and activate account" })).toBeVisible();
-  await expect(page.getByText("The invitation determines the school and access.", { exact: false })).toBeVisible();
-
-  const invitedPassword = `Loop-invited-${Date.now()}!`;
-  await page.getByLabel("Create password").fill(invitedPassword);
-  await page.getByRole("button", { name: "Create and activate account" }).click();
-  await expect(page).toHaveURL(/\/teacher/);
-  await expect(page.getByText(/no active classroom is assigned/i)).toBeVisible();
-
+  await expect(page.locator(".staff-invitation-row").filter({ hasText: invitedEmail })).toContainText("Pending");
+  await expect(page.locator(".status-success a")).toHaveCount(0);
+  expect(page.url()).not.toContain("token=");
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/sign-in/);
   await page.goto("/teacher");
   await expect(page).toHaveURL(/\/sign-in/);
-  await page.goto(invitationLink!);
-  await expect(page.getByText("invalid, expired, or already used")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create and activate account" })).toHaveCount(0);
 });
 
 async function latestRecoveryLink(request: APIRequestContext, email: string) {
