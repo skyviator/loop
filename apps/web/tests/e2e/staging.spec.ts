@@ -215,7 +215,7 @@ test.describe.serial("Loop staging HTTPS verification", () => {
       await teacher.page.getByRole("button", { name: "Check in selected" }).click();
       expect((await checkIn).ok()).toBe(true);
       await teacher.page.reload();
-      await expect(teacher.page.getByText("2 / 2", { exact: true })).toBeVisible();
+      await expect(teacher.page.locator(".attendance-row").filter({ hasText: "Child One" })).toContainText("Checked in");
       const carePanel = teacher.page.getByRole("tabpanel");
       await carePanel.getByRole("button", { name: "Save meal update" }).click();
       await expect(carePanel.getByRole("status")).toHaveText("2 care updates saved.");
