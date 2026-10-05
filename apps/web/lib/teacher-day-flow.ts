@@ -98,3 +98,9 @@ export function defaultPhotoSelection(
     .filter((child) => child.present && child.consent === "granted")
     .map((child) => child.id);
 }
+
+export function photoSelectionVersion(
+  roster: readonly { id: string; present: boolean; consent: string }[],
+) {
+  return roster.map((child) => `${child.id}:${child.present ? 1 : 0}:${child.consent}`).join("|");
+}

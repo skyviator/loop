@@ -4,6 +4,7 @@ import {
   buildAttendanceOverview,
   buildEffectiveDailySchedule,
   defaultPhotoSelection,
+  photoSelectionVersion,
 } from "./teacher-day-flow";
 
 describe("teacher day-flow helpers", () => {
@@ -43,5 +44,12 @@ describe("teacher day-flow helpers", () => {
       { id: "away", present: false, consent: "granted" },
       { id: "blocked", present: true, consent: "denied" },
     ])).toEqual(["present"]);
+  });
+
+  it("changes the photo selection version when attendance or consent changes", () => {
+    const before = photoSelectionVersion([{ id: "child", present: false, consent: "granted" }]);
+    const afterAttendance = photoSelectionVersion([{ id: "child", present: true, consent: "granted" }]);
+    const afterConsent = photoSelectionVersion([{ id: "child", present: true, consent: "denied" }]);
+    expect(new Set([before, afterAttendance, afterConsent]).size).toBe(3);
   });
 });
