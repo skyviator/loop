@@ -281,11 +281,11 @@ progress { width: 100%; height: .55rem; border: 0; border-radius: 4px; overflow:
 .now-next .eyebrow { grid-column: 1 / -1; }
 .now-next span { color: var(--loop-text-muted); font-size: .8rem; }
 .attendance-row { display: grid; grid-template-columns: 2.4rem minmax(8rem, 1fr) 7rem 4rem; min-height: 58px; align-items: center; gap: .6rem; border-bottom: 1px solid var(--loop-border); font-size: .82rem; }
-.attendance-bulk-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+.attendance-bulk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: .75rem; margin-bottom: 1rem; }
 .bulk-arrivals, .bulk-attendance { padding: .85rem; border: 1px solid var(--loop-border); border-radius: var(--loop-radius-sm); background: var(--loop-soft); }
-.bulk-arrivals-heading, .bulk-attendance-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.bulk-arrivals-heading, .bulk-attendance-heading { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 1rem; }
 .bulk-attendance-heading p { margin: .2rem 0 0; color: var(--loop-text-muted); font-size: .72rem; line-height: 1.45; }
-.selection-actions { display: flex; flex: none; gap: .25rem; }
+.selection-actions { display: flex; flex: none; flex-wrap: wrap; gap: .25rem; }
 .bulk-arrival-choices { display: flex; flex-wrap: wrap; gap: .25rem 1rem; margin-top: .45rem; }
 .bulk-attendance .form-footer { min-height: 48px; margin-top: .65rem; }
 .bulk-attendance .button { min-height: 48px; }
