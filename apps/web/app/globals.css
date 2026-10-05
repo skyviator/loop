@@ -72,9 +72,10 @@ h3 { margin-bottom: .5rem; font-size: .95rem; }
 .form-stack { display: grid; gap: 1rem; text-align: left; }
 .form-stack + .text-link { display: inline-block; margin-top: 1.3rem; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: end; }
+.form-grid > * { min-width: 0; }
 .field { display: grid; gap: .4rem; text-align: left; }
 .field > span, .check-field { font-size: .78rem; font-weight: 700; }
-.field input, .field select, .field textarea, .bulk-child select { width: 100%; min-height: 48px; border: 1px solid var(--loop-border-strong); border-radius: var(--loop-radius-sm); background: var(--loop-surface); padding: .7rem .8rem; color: var(--loop-text); }
+.field input, .field select, .field textarea, .bulk-child select { width: 100%; min-width: 0; min-height: 48px; border: 1px solid var(--loop-border-strong); border-radius: var(--loop-radius-sm); background: var(--loop-surface); padding: .7rem .8rem; color: var(--loop-text); }
 .field input:hover, .field select:hover { border-color: var(--loop-primary); }
 .check-field { display: flex; min-height: 48px; align-items: center; gap: .6rem; }
 .check-field input, .feature-row input { width: 1.2rem; height: 1.2rem; accent-color: var(--loop-primary); }
@@ -263,7 +264,8 @@ h3 { margin-bottom: .5rem; font-size: .95rem; }
 .meter-label { display: flex; justify-content: space-between; margin: 1rem 0 .3rem; font-size: .78rem; font-weight: 700; }
 progress { width: 100%; height: .55rem; border: 0; border-radius: 4px; overflow: hidden; accent-color: var(--loop-primary); }
 .schedule-list { display: grid; }
-.schedule-row { display: grid; grid-template-columns: 4.5rem 8rem minmax(10rem, 1fr) 8rem; gap: 1rem; border-bottom: 1px solid var(--loop-border); padding: .75rem .25rem; font-size: .8rem; }
+.schedule-row { display: grid; grid-template-columns: 4.5rem 8rem minmax(0, 1fr) 8rem; gap: 1rem; border-bottom: 1px solid var(--loop-border); padding: .75rem .25rem; font-size: .8rem; }
+.schedule-row > * { min-width: 0; overflow-wrap: anywhere; }
 .schedule-row span, .schedule-row time, .schedule-row small { color: var(--loop-text-muted); }
 .empty-state { display: grid; place-items: center; min-height: 10rem; margin: 0; padding: 2rem; color: var(--loop-text-muted); text-align: center; }
 
