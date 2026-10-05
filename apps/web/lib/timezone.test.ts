@@ -7,6 +7,10 @@ describe("school timezone helpers", () => {
     expect(zonedDateTime("2026-10-05", "09:15:00", "Asia/Colombo")).toBe("2026-10-05T03:45:00.000Z");
   });
 
+  it("accepts fractional seconds returned by PostgreSQL time columns", () => {
+    expect(zonedDateTime("2026-10-05", "09:15:00.123456", "Asia/Colombo")).toBe("2026-10-05T03:45:00.000Z");
+  });
+
   it("uses the configured timezone and observes daylight-saving offsets", () => {
     expect(zonedDateTime("2026-07-15", "09:15:00", "America/New_York")).toBe("2026-07-15T13:15:00.000Z");
     expect(zonedDateTime("2026-12-15", "09:15:00", "America/New_York")).toBe("2026-12-15T14:15:00.000Z");

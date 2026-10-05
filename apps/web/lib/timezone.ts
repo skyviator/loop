@@ -23,7 +23,7 @@ function timezoneOffset(instant: Date, timezone: string) {
 
 export function zonedDateTime(date: string, time: string, timezone: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  const clock = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(time);
+  const clock = /^(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,6})?)?$/.exec(time);
   if (!match || !clock) throw new Error("The local date or time is invalid.");
 
   const wallClock = Date.UTC(
