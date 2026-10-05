@@ -131,6 +131,7 @@ cross join (values ('attendance'), ('timetable'), ('meals'), ('photos'), ('messa
 insert into public.timetable_slots (id, school_id, classroom_id, day_of_week, start_time, end_time, title, care_feature_key, created_by_user_id)
 values
   ('a0000000-0000-0000-0000-000000000070', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 1, '11:30', '12:00', 'Lunch', 'meals', '10000000-0000-0000-0000-000000000001'),
+  ('a0000000-0000-0000-0000-000000000074', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000021', 1, '09:30', '10:00', 'Moonbirds circle', 'activities', '10000000-0000-0000-0000-000000000001'),
   ('b0000000-0000-0000-0000-000000000070', 'b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000020', 1, '11:30', '12:00', 'Lunch', 'meals', '20000000-0000-0000-0000-000000000001');
 
 insert into public.care_events (
@@ -329,7 +330,29 @@ select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002
 set local role authenticated;
 select extensions.lives_ok($$insert into public.timetable_slots (id, school_id, classroom_id, day_of_week, start_time, end_time, title, created_by_user_id) values ('a0000000-0000-0000-0000-000000000072', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 2, '09:00', '09:30', 'Teacher slot', '10000000-0000-0000-0000-000000000002')$$, 'assigned teacher can create a timetable slot after permission is enabled');
 select pg_temp.throws_any($$insert into public.timetable_slots (school_id, classroom_id, day_of_week, start_time, end_time, title, created_by_user_id) values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000021', 2, '09:00', '09:30', 'Unassigned slot', '10000000-0000-0000-0000-000000000002')$$, 'teacher cannot manage an unassigned classroom timetable');
+select extensions.lives_ok($$insert into public.timetable_exceptions (id, school_id, classroom_id, timetable_slot_id, service_date, kind, replacement_title, replacement_start_time, replacement_end_time, created_by_user_id) values ('a0000000-0000-0000-0000-000000000073', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 'a0000000-0000-0000-0000-000000000072', current_date, 'changed', 'Teacher daily change', '09:15', '09:45', '10000000-0000-0000-0000-000000000002')$$, 'assigned teacher can create a day-specific timetable change');
+select extensions.is((select title from public.timetable_slots where id = 'a0000000-0000-0000-0000-000000000072'), 'Teacher slot', 'day-specific timetable change leaves the recurring slot unchanged');
+select pg_temp.throws_any($$insert into public.timetable_exceptions (school_id, classroom_id, service_date, kind, replacement_title, replacement_start_time, replacement_end_time, created_by_user_id) values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000021', current_date, 'additional', 'Unassigned extra', '10:00', '10:15', '10000000-0000-0000-0000-000000000002')$$, 'teacher cannot create a day-specific exception in an unassigned classroom');
+select pg_temp.throws_any($$insert into public.timetable_exceptions (id, school_id, classroom_id, timetable_slot_id, service_date, kind, created_by_user_id) values ('a0000000-0000-0000-0000-000000000075', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 'a0000000-0000-0000-0000-000000000074', current_date, 'cancelled', '10000000-0000-0000-0000-000000000002')$$, 'teacher cannot pair an assigned classroom with an unassigned classroom slot');
+select pg_temp.throws_any($$update public.timetable_exceptions set timetable_slot_id = 'a0000000-0000-0000-0000-000000000074' where id = 'a0000000-0000-0000-0000-000000000073'$$, 'teacher cannot update a valid exception to use another classroom slot');
+select pg_temp.throws_any($$update public.timetable_exceptions set classroom_id = 'a0000000-0000-0000-0000-000000000021' where id = 'a0000000-0000-0000-0000-000000000073'$$, 'teacher cannot update a valid exception to another classroom while retaining its slot');
+select pg_temp.throws_any($$insert into public.timetable_exceptions (school_id, classroom_id, timetable_slot_id, service_date, kind, created_by_user_id) values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 'b0000000-0000-0000-0000-000000000070', current_date + 1, 'cancelled', '10000000-0000-0000-0000-000000000002')$$, 'teacher cannot pair an assigned classroom with a cross-school slot');
+select extensions.lives_ok($$insert into public.timetable_exceptions (id, school_id, classroom_id, service_date, kind, replacement_title, replacement_start_time, replacement_end_time, created_by_user_id) values ('a0000000-0000-0000-0000-000000000076', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', current_date, 'additional', 'Teacher extra', '10:00', '10:15', '10000000-0000-0000-0000-000000000002')$$, 'assigned teacher can create a slotless day-only addition');
+select extensions.lives_ok($$delete from public.timetable_exceptions where id = 'a0000000-0000-0000-0000-000000000073'$$, 'assigned teacher can remove a permitted day-specific exception');
+select extensions.lives_ok($$delete from public.timetable_exceptions where id = 'a0000000-0000-0000-0000-000000000076'$$, 'assigned teacher can remove a slotless day-only addition');
 select extensions.lives_ok($$delete from public.timetable_slots where id = 'a0000000-0000-0000-0000-000000000072'$$, 'assigned teacher can remove a permitted timetable slot');
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000004', true);
+set local role authenticated;
+select pg_temp.throws_any($$insert into public.timetable_exceptions (school_id, classroom_id, service_date, kind, replacement_title, replacement_start_time, replacement_end_time, created_by_user_id) values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', current_date, 'additional', 'Unassigned teacher extra', '10:30', '10:45', '10000000-0000-0000-0000-000000000004')$$, 'unassigned teacher cannot create a day-specific exception');
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select extensions.lives_ok($$insert into public.timetable_exceptions (id, school_id, classroom_id, timetable_slot_id, service_date, kind, created_by_user_id) values ('a0000000-0000-0000-0000-000000000077', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000021', 'a0000000-0000-0000-0000-000000000074', current_date, 'cancelled', '10000000-0000-0000-0000-000000000001')$$, 'school admin can create a valid own-school exception after a rejected mismatch');
+select pg_temp.throws_any($$insert into public.timetable_exceptions (school_id, classroom_id, timetable_slot_id, service_date, kind, created_by_user_id) values ('b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000020', 'b0000000-0000-0000-0000-000000000070', current_date + 1, 'cancelled', '10000000-0000-0000-0000-000000000001')$$, 'school admin cannot create a cross-school exception');
+select extensions.lives_ok($$delete from public.timetable_exceptions where id = 'a0000000-0000-0000-0000-000000000077'$$, 'school admin can clean up a valid own-school exception');
 reset role;
 
 -- Step 3: platform structure setup does not expand child-data access.

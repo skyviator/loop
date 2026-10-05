@@ -1649,11 +1649,11 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "timetable_exceptions_timetable_slot_id_school_id_fkey"
-            columns: ["timetable_slot_id", "school_id"]
+            foreignKeyName: "timetable_exceptions_slot_context_fkey"
+            columns: ["timetable_slot_id", "school_id", "classroom_id"]
             isOneToOne: false
             referencedRelation: "timetable_slots"
-            referencedColumns: ["id", "school_id"]
+            referencedColumns: ["id", "school_id", "classroom_id"]
           },
         ]
       }
