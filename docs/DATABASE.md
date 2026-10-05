@@ -76,6 +76,16 @@ Supabase private-channel authorization is cached for an existing Realtime connec
 
 `notification_preferences` is the sole exposed Step 5 table. RLS permits an active school user to select, insert, or update only their own row. Attendance, messages, and important announcements default on; photo notifications default off. Platform administrators have no school-notification preference or subscription path.
 
+## Media withdrawal and cleanup
+
+`media_assets.status = 'ready'` remains the authoritative read boundary. `withdraw_media_asset` changes a permitted asset to `deleted` transactionally before R2 deletion begins. School Admins may withdraw school media; a Teacher may withdraw only their own upload while still assigned to its classroom. Guardian, Platform Admin, anonymous, unassigned, and cross-school calls fail in the database.
+
+A granted-to-not-allowed `child_media_consents` transition withdraws every pending or ready asset tagged to that child. Pending reservations become failed and remain quota-charged until cleanup. The asset, tags, variants, and safe audit metadata remain for investigation, but RLS will not return the withdrawn asset or mint a new signed URL.
+
+`private.media_cleanup_jobs` is not exposed through the Data API. Service-role-only `claim_media_cleanup_jobs` and `complete_media_cleanup_job` use `FOR UPDATE SKIP LOCKED`, a two-minute lease, bounded attempts, and idempotent variant transitions. Successful full cleanup deletes all remaining variants and releases ready or reserved quota exactly once. A provider failure keeps access revoked and quota charged. The same queue deletes the sanitized original after 30 days without withdrawing the display and thumbnail variants.
+
+Supabase Cron invokes `/api/internal/media/cleanup` every five minutes through `pg_net` only when the dedicated Vault URL and secret are present. Missing local configuration is quiet. The endpoint accepts an empty POST and a separate fixed-length-digest-checked `MEDIA_CLEANUP_WORKER_SECRET`; it accepts no tenant, asset, or object selector.
+
 `private.push_subscriptions` stores endpoint capabilities and Web Push encryption keys outside the exposed schema. Registration and deactivation wrappers derive the caller from `auth.uid()` and never accept a recipient/user ID. One person may register multiple devices; an active endpoint cannot be reassigned to another account, and current-device sign-out attempts deactivation first.
 
 `private.notification_outbox` stores minimal event references and generic privacy-safe copy. Database triggers enqueue only attendance check-in/check-out, new message, newly published important announcement, and ready photo events. `care_events`, timetable tables, normal announcements, and other routine activity have no push trigger. `private.push_deliveries` records per-subscription delivery state, bounded attempts, status class, and HTTP status without response bodies.

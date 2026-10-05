@@ -218,7 +218,7 @@ function ChildProfile({ child, currentEnrollment, activeClassrooms, classroomByI
 
     <section className="child-profile-section" aria-labelledby={`consent-${child.id}`}>
       <h4 id={`consent-${child.id}`}>Media consent</h4>
-      <p className="child-action-note">Not recorded and denied both prevent staff from tagging this child in private photos.</p>
+      <p className="child-action-note">Not recorded and denied prevent new photo tags. Changing granted consent to either option also withdraws existing tagged photos immediately and schedules their private files for deletion.</p>
       <form action={setMediaConsentAction} className="consent-row child-profile-consent">
         <input type="hidden" name="child_id" value={child.id} />
         <span><strong>Photo use</strong><small>Last changed {consent ? new Date(consent.changed_at).toLocaleDateString("en-LK") : "never"}</small></span>

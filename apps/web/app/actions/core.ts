@@ -7,6 +7,7 @@ import { emailAddress, oneOf, requiredText, uuid, ValidationError } from "@loop/
 
 import { requireViewer } from "@/lib/auth";
 import { deliverInvitation } from "@/lib/invitations/server";
+import { scheduleMediaCleanup } from "@/lib/media/schedule";
 import { schedulePushDispatch } from "@/lib/push/schedule";
 import { createServerAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -318,8 +319,10 @@ export async function setMediaConsentAction(formData: FormData) {
     changed_at: new Date().toISOString(),
   }).eq("school_id", viewer.schoolId!).eq("child_id", childId);
   if (error) throw new Error(error.message);
+  scheduleMediaCleanup();
   revalidatePath("/school");
   revalidatePath("/teacher");
+  revalidatePath("/parent");
 }
 
 export async function updateSchoolSettingsAction(formData: FormData) {

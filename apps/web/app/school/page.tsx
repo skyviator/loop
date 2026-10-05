@@ -10,6 +10,7 @@ import {
 } from "@/app/actions/core";
 import { AppShell, Stat, StatusNote } from "@/components/app-shell";
 import { ChildGuardianManagement } from "@/components/child-guardian-management";
+import { PrivatePhoto } from "@/components/private-photo";
 import { SchoolStructureManagement } from "@/components/school-structure-management";
 import { StaffManagement } from "@/components/staff-management";
 import { requireViewer } from "@/lib/auth";
@@ -23,7 +24,7 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
   const state = await searchParams;
   const supabase = await createClient();
   const schoolId = viewer.schoolId!;
-  const [school, plans, children, enrollments, memberships, branches, classrooms, assignments, guardianLinks, invitations, settings, catalogue, planFeatures, slots, exceptions, audit, mediaConsents, storageUsage] = await Promise.all([
+  const [school, plans, children, enrollments, memberships, branches, classrooms, assignments, guardianLinks, invitations, settings, catalogue, planFeatures, slots, exceptions, audit, mediaConsents, storageUsage, recentPhotos] = await Promise.all([
     supabase.from("schools").select("id, name, plan_id, timezone, teachers_can_manage_timetable, teachers_can_publish_announcements, teachers_can_manage_calendar").eq("id", schoolId).single(),
     supabase.from("plans").select("id, label, max_active_children, max_staff, storage_allowance_bytes").eq("status", "active"),
     supabase.from("children").select("id, preferred_name, status").eq("school_id", schoolId).order("preferred_name"),
@@ -42,6 +43,7 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
     supabase.from("audit_log").select("id, occurred_at, action, entity_table").eq("school_id", schoolId).order("occurred_at", { ascending: false }).limit(8),
     supabase.from("child_media_consents").select("child_id, state, changed_at").eq("school_id", schoolId),
     supabase.from("school_storage_usage").select("used_bytes, reserved_bytes").eq("school_id", schoolId).maybeSingle(),
+    supabase.from("media_assets").select("id, caption").eq("school_id", schoolId).eq("status", "ready").order("created_at", { ascending: false }).limit(12),
   ]);
 
   const plan = plans.data?.find((item) => item.id === school.data?.plan_id);
@@ -80,6 +82,8 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
       <SchoolStructureManagement branches={branches.data ?? []} classrooms={classrooms.data ?? []} assignments={assignments.data ?? []} enrollments={enrollments.data ?? []} today={today} />
 
       <section className="section-panel"><div className="section-heading"><h2>Plan usage</h2></div><p className="meta">{plan?.label ?? "Plan"}</p><label className="meter-label">Children <span>{activeChildren.length} / {plan?.max_active_children ?? 0}</span></label><progress max={plan?.max_active_children ?? 1} value={activeChildren.length} /><label className="meter-label">Staff <span>{activeStaff.length} / {plan?.max_staff ?? 0}</span></label><progress max={plan?.max_staff ?? 1} value={activeStaff.length} /><label className="meter-label">Private media <span>{(storageUsed / 1048576).toFixed(1)} / {((plan?.storage_allowance_bytes ?? 0) / 1048576).toFixed(0)} MB</span></label><progress max={plan?.storage_allowance_bytes || 1} value={storageUsed} />{childLimitReached ? <StatusNote tone="warning">The active-child limit has been reached. Archive a child who has left or ask Loop to change the plan.</StatusNote> : null}{staffLimitReached ? <StatusNote tone="warning">The active-staff limit has been reached. Deactivate a former staff membership or ask Loop to change the plan.</StatusNote> : null}</section>
+
+      {recentPhotos.data?.length ? <section className="section-panel"><div className="section-heading"><div><p className="eyebrow">Private media</p><h2>Recent photos</h2></div></div><p className="muted">Removing a photo hides it immediately and schedules every private size for deletion.</p><div className="photo-grid recent-photos">{recentPhotos.data.map((photo) => <PrivatePhoto assetId={photo.id} caption={photo.caption} canRemove key={photo.id} />)}</div></section> : null}
 
       <ChildGuardianManagement
         roster={children.data ?? []}

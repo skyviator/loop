@@ -925,6 +925,7 @@ export type Database = {
           caption: string | null
           captured_at: string | null
           classroom_id: string
+          cleanup_completed_at: string | null
           created_at: string
           id: string
           ready_at: string | null
@@ -935,11 +936,15 @@ export type Database = {
           updated_at: string
           uploader_membership_id: string
           uploader_user_id: string
+          withdrawal_reason: string | null
+          withdrawn_at: string | null
+          withdrawn_by_user_id: string | null
         }
         Insert: {
           caption?: string | null
           captured_at?: string | null
           classroom_id: string
+          cleanup_completed_at?: string | null
           created_at?: string
           id?: string
           ready_at?: string | null
@@ -950,11 +955,15 @@ export type Database = {
           updated_at?: string
           uploader_membership_id: string
           uploader_user_id: string
+          withdrawal_reason?: string | null
+          withdrawn_at?: string | null
+          withdrawn_by_user_id?: string | null
         }
         Update: {
           caption?: string | null
           captured_at?: string | null
           classroom_id?: string
+          cleanup_completed_at?: string | null
           created_at?: string
           id?: string
           ready_at?: string | null
@@ -965,6 +974,9 @@ export type Database = {
           updated_at?: string
           uploader_membership_id?: string
           uploader_user_id?: string
+          withdrawal_reason?: string | null
+          withdrawn_at?: string | null
+          withdrawn_by_user_id?: string | null
         }
         Relationships: [
           {
@@ -1005,6 +1017,7 @@ export type Database = {
           expires_at: string
           finalized_at: string | null
           id: string
+          quota_released_at: string | null
           reserved_bytes: number
           school_id: string
           status: Database["public"]["Enums"]["media_upload_status"]
@@ -1019,6 +1032,7 @@ export type Database = {
           expires_at: string
           finalized_at?: string | null
           id?: string
+          quota_released_at?: string | null
           reserved_bytes: number
           school_id: string
           status?: Database["public"]["Enums"]["media_upload_status"]
@@ -1033,6 +1047,7 @@ export type Database = {
           expires_at?: string
           finalized_at?: string | null
           id?: string
+          quota_released_at?: string | null
           reserved_bytes?: number
           school_id?: string
           status?: Database["public"]["Enums"]["media_upload_status"]
@@ -1070,6 +1085,7 @@ export type Database = {
           byte_size: number
           content_type: string
           created_at: string
+          deleted_at: string | null
           height: number
           id: string
           kind: Database["public"]["Enums"]["media_variant_kind"]
@@ -1084,6 +1100,7 @@ export type Database = {
           byte_size: number
           content_type: string
           created_at?: string
+          deleted_at?: string | null
           height: number
           id?: string
           kind: Database["public"]["Enums"]["media_variant_kind"]
@@ -1098,6 +1115,7 @@ export type Database = {
           byte_size?: number
           content_type?: string
           created_at?: string
+          deleted_at?: string | null
           height?: number
           id?: string
           kind?: Database["public"]["Enums"]["media_variant_kind"]
@@ -1738,6 +1756,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_media_cleanup_jobs: {
+        Args: { batch_size?: number }
+        Returns: {
+          asset_id: string
+          cleanup_id: string
+          cleanup_scope: string
+          object_keys: string[]
+        }[]
+      }
       claim_push_deliveries: {
         Args: { batch_size?: number }
         Returns: {
@@ -1750,6 +1777,14 @@ export type Database = {
           route: string
           title: string
         }[]
+      }
+      complete_media_cleanup_job: {
+        Args: {
+          failure_class?: string
+          outcome: string
+          target_cleanup_id: string
+        }
+        Returns: undefined
       }
       complete_push_delivery: {
         Args: {
@@ -1875,6 +1910,10 @@ export type Database = {
           target_status: Database["public"]["Enums"]["record_status"]
         }
         Returns: undefined
+      }
+      withdraw_media_asset: {
+        Args: { target_asset_id: string }
+        Returns: boolean
       }
     }
     Enums: {

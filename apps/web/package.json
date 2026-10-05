@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run lib app/actions/communication.test.ts app/api/internal/push/retry/route.test.ts",
+    "test": "vitest run lib app/actions/communication.test.ts app/api/internal app/api/media",
     "test:pwa": "vitest run lib/pwa/service-worker.test.ts lib/push/policy.test.ts",
     "seed:local": "node scripts/seed-local.mjs",
     "seed:staging": "node scripts/seed-staging.mjs",

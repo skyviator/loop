@@ -925,6 +925,284 @@ select pg_temp.throws_any(
 );
 reset role;
 
+-- Privacy-safe media lifecycle: consent loss revokes database access before
+-- provider cleanup, and only narrowly authorized staff can withdraw photos.
+select extensions.is(
+  (select status::text from public.media_assets where id = 'a0000000-0000-0000-0000-000000000102'),
+  'deleted',
+  'consent revocation immediately withdraws an existing ready photo'
+);
+select extensions.is(
+  (select withdrawal_reason from public.media_assets where id = 'a0000000-0000-0000-0000-000000000102'),
+  'consent_revoked',
+  'consent-triggered withdrawal records a safe reason'
+);
+select extensions.is(
+  (select count(*)::integer from private.media_cleanup_jobs where asset_id = 'a0000000-0000-0000-0000-000000000102' and scope = 'asset'),
+  1,
+  'consent revocation queues one idempotent full-asset cleanup'
+);
+select extensions.is(
+  (select count(*)::integer from public.media_upload_reservations where uploader_user_id = '10000000-0000-0000-0000-000000000002' and status = 'failed' and quota_released_at is null),
+  1,
+  'consent revocation also fails an in-flight upload without releasing quota before cleanup'
+);
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select extensions.is((select count(*)::integer from public.media_assets where id = 'a0000000-0000-0000-0000-000000000102'), 0, 'Guardian cannot select consent-withdrawn media');
+select extensions.is((select count(*)::integer from public.media_variants where asset_id = 'a0000000-0000-0000-0000-000000000102'), 0, 'Guardian cannot obtain metadata for a new signed URL after consent withdrawal');
+select pg_temp.throws_any(
+  $$select public.withdraw_media_asset('a0000000-0000-0000-0000-000000000102')$$,
+  'Guardian cannot remove school media'
+);
+reset role;
+
+select extensions.is(has_function_privilege('anon', 'public.withdraw_media_asset(uuid)', 'EXECUTE'), false, 'anonymous cannot call photo withdrawal');
+select extensions.is(has_function_privilege('authenticated', 'public.claim_media_cleanup_jobs(integer)', 'EXECUTE'), false, 'authenticated users cannot claim private cleanup work');
+select extensions.is(has_function_privilege('authenticated', 'public.complete_media_cleanup_job(uuid,text,text)', 'EXECUTE'), false, 'authenticated users cannot complete private cleanup work');
+
+-- Two fresh ready assets exercise Teacher-own-photo and School Admin removal.
+insert into public.media_upload_reservations (
+  id, school_id, classroom_id, uploader_membership_id, uploader_user_id,
+  status, reserved_bytes, actual_bytes, expires_at, finalized_at, quota_released_at
+) values
+  ('a0000000-0000-0000-0000-000000000201', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002', 'ready', 300, 300, now() + interval '1 hour', now(), now()),
+  ('a0000000-0000-0000-0000-000000000301', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002', 'ready', 100, 100, now() + interval '1 hour', now(), now());
+insert into public.media_assets (
+  id, reservation_id, school_id, classroom_id, uploader_membership_id,
+  uploader_user_id, status, ready_at, total_bytes
+) values
+  ('a0000000-0000-0000-0000-000000000202', 'a0000000-0000-0000-0000-000000000201', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002', 'ready', now(), 300),
+  ('a0000000-0000-0000-0000-000000000302', 'a0000000-0000-0000-0000-000000000301', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002', 'ready', now(), 100);
+insert into public.media_variants (
+  id, school_id, asset_id, kind, object_key, content_type,
+  byte_size, width, height, status
+)
+select id, 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000202',
+  kind::public.media_variant_kind,
+  prefix || '/a0000000-0000-0000-0000-000000000001/a0000000-0000-0000-0000-000000000202/' || id || '.jpg',
+  'image/jpeg', 100, size, size, 'ready'
+from (values
+  ('a0000000-0000-0000-0000-000000000211'::uuid, 'original', 'originals', 1000),
+  ('a0000000-0000-0000-0000-000000000212'::uuid, 'display', 'display', 800),
+  ('a0000000-0000-0000-0000-000000000213'::uuid, 'thumbnail', 'thumbs', 360)
+) variants(id, kind, prefix, size);
+insert into public.media_asset_children (asset_id, child_id, school_id) values
+  ('a0000000-0000-0000-0000-000000000202', 'a0000000-0000-0000-0000-000000000030', 'a0000000-0000-0000-0000-000000000001'),
+  ('a0000000-0000-0000-0000-000000000302', 'a0000000-0000-0000-0000-000000000030', 'a0000000-0000-0000-0000-000000000001');
+update public.school_storage_usage set used_bytes = 600 where school_id = 'a0000000-0000-0000-0000-000000000001';
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000004', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.withdraw_media_asset('a0000000-0000-0000-0000-000000000202')$$,
+  'unassigned Teacher cannot remove child media'
+);
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.withdraw_media_asset('b0000000-0000-0000-0000-000000000102')$$,
+  'Teacher cannot remove another school photo'
+);
+select extensions.lives_ok(
+  $$select public.withdraw_media_asset('a0000000-0000-0000-0000-000000000202')$$,
+  'assigned Teacher can remove their own photo'
+);
+select pg_temp.throws_any(
+  $$update public.media_assets set status = 'ready' where id = 'a0000000-0000-0000-0000-000000000202'$$,
+  'Teacher cannot restore withdrawn media through direct table mutation'
+);
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.withdraw_media_asset('b0000000-0000-0000-0000-000000000102')$$,
+  'School Admin cannot remove another school photo'
+);
+select extensions.lives_ok(
+  $$select public.withdraw_media_asset('a0000000-0000-0000-0000-000000000302')$$,
+  'School Admin can remove media inside their school'
+);
+reset role;
+
+select set_config('request.jwt.claim.sub', '90000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select pg_temp.throws_any(
+  $$select public.withdraw_media_asset('a0000000-0000-0000-0000-000000000202')$$,
+  'Platform Super Admin remains child-media blind and cannot remove photos'
+);
+reset role;
+
+select extensions.is(
+  (select count(*)::integer from public.media_variants where asset_id = 'a0000000-0000-0000-0000-000000000202' and status = 'ready'),
+  3,
+  'withdrawal preserves private object metadata until provider cleanup succeeds'
+);
+
+set local role service_role;
+create temp table claimed_media_cleanup on commit drop as
+select * from public.claim_media_cleanup_jobs(50);
+select extensions.is(
+  (select cardinality(object_keys) from claimed_media_cleanup where asset_id = 'a0000000-0000-0000-0000-000000000202'),
+  3,
+  'cleanup claim targets original, display, and thumbnail objects'
+);
+select extensions.lives_ok(
+  $$do $cleanup$
+    declare cleanup record;
+    begin
+      for cleanup in select cleanup_id from claimed_media_cleanup loop
+        perform public.complete_media_cleanup_job(cleanup.cleanup_id, 'success', null);
+      end loop;
+    end
+  $cleanup$;$$,
+  'service worker can complete all claimed cleanup jobs idempotently'
+);
+reset role;
+
+select extensions.is(
+  (select count(*)::integer from public.media_variants where asset_id = 'a0000000-0000-0000-0000-000000000202' and status = 'deleted'),
+  3,
+  'successful cleanup marks every photo variant deleted'
+);
+select extensions.is(
+  (select used_bytes::integer from public.school_storage_usage where school_id = 'a0000000-0000-0000-0000-000000000001'),
+  0,
+  'ready-media quota is released exactly once after all provider deletes succeed'
+);
+select extensions.is(
+  (select reserved_bytes::integer from public.school_storage_usage where school_id = 'a0000000-0000-0000-0000-000000000001'),
+  0,
+  'failed-upload reserved quota is released only after object cleanup succeeds'
+);
+
+set local role service_role;
+select public.complete_media_cleanup_job(
+  (select cleanup_id from claimed_media_cleanup where asset_id = 'a0000000-0000-0000-0000-000000000202'),
+  'success', null
+);
+reset role;
+select extensions.is(
+  (select used_bytes::integer from public.school_storage_usage where school_id = 'a0000000-0000-0000-0000-000000000001'),
+  0,
+  'cleanup retry cannot double-decrement or make used quota negative'
+);
+
+select extensions.is(
+  (select count(*)::integer from public.audit_log
+    where action in ('media.withdrawn', 'media.consent_withdrawn', 'media.cleanup_completed')) > 0,
+  true,
+  'withdrawal, consent withdrawal, and cleanup completion are audited'
+);
+select extensions.is(
+  (select count(*)::integer from public.audit_log
+    where action like 'media.%'
+      and new_values::text ~* '(https?://|r2[.]cloudflarestorage|object_key|token|secret|originals/)'),
+  0,
+  'media lifecycle audit records contain no URL, object key, token, or secret material'
+);
+
+-- Expired reservations become cleanup work but an active reservation is never
+-- selected. Reserved quota remains charged until stale object cleanup finishes.
+insert into public.media_upload_reservations (
+  id, school_id, classroom_id, uploader_membership_id, uploader_user_id,
+  status, reserved_bytes, expires_at, created_at
+) values
+  ('a0000000-0000-0000-0000-000000000401', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002', 'reserved', 300, now() - interval '1 minute', now() - interval '20 minutes'),
+  ('a0000000-0000-0000-0000-000000000501', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002', 'reserved', 400, now() + interval '10 minutes', now());
+insert into public.media_assets (
+  id, reservation_id, school_id, classroom_id, uploader_membership_id, uploader_user_id
+) values
+  ('a0000000-0000-0000-0000-000000000402', 'a0000000-0000-0000-0000-000000000401', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002'),
+  ('a0000000-0000-0000-0000-000000000502', 'a0000000-0000-0000-0000-000000000501', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000020', 'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002');
+insert into public.media_asset_children (asset_id, child_id, school_id) values
+  ('a0000000-0000-0000-0000-000000000402', 'a0000000-0000-0000-0000-000000000030', 'a0000000-0000-0000-0000-000000000001'),
+  ('a0000000-0000-0000-0000-000000000502', 'a0000000-0000-0000-0000-000000000030', 'a0000000-0000-0000-0000-000000000001');
+update public.school_storage_usage set reserved_bytes = 700 where school_id = 'a0000000-0000-0000-0000-000000000001';
+
+set local role service_role;
+create temp table stale_cleanup_claim on commit drop as
+select * from public.claim_media_cleanup_jobs(50);
+select extensions.lives_ok(
+  $$select public.complete_media_cleanup_job(
+    (select cleanup_id from stale_cleanup_claim where asset_id = 'a0000000-0000-0000-0000-000000000402'),
+    'success', null
+  )$$,
+  'stale upload cleanup can complete without provider objects'
+);
+reset role;
+
+select extensions.is((select status::text from public.media_upload_reservations where id = 'a0000000-0000-0000-0000-000000000401'), 'expired', 'stale upload reservation is expired by cleanup claim');
+select extensions.is((select status::text from public.media_assets where id = 'a0000000-0000-0000-0000-000000000402'), 'deleted', 'stale pending media is never made visible');
+select extensions.is((select status::text from public.media_upload_reservations where id = 'a0000000-0000-0000-0000-000000000501'), 'reserved', 'active upload reservation is never removed as stale');
+select extensions.is((select status::text from public.media_assets where id = 'a0000000-0000-0000-0000-000000000502'), 'pending', 'active pending media is untouched by stale cleanup');
+select extensions.is((select count(*)::integer from private.media_cleanup_jobs where asset_id = 'a0000000-0000-0000-0000-000000000502'), 0, 'active upload receives no cleanup job');
+select extensions.is((select reserved_bytes::integer from public.school_storage_usage where school_id = 'a0000000-0000-0000-0000-000000000001'), 400, 'stale cleanup releases only the expired reservation quota');
+
+-- Sanitized originals remain private for 30 days, then only that variant is
+-- removed; display/thumbnail media stays available and quota follows reality.
+insert into public.media_upload_reservations (
+  id, school_id, classroom_id, uploader_membership_id, uploader_user_id,
+  status, reserved_bytes, actual_bytes, expires_at, finalized_at, quota_released_at
+) values (
+  'b0000000-0000-0000-0000-000000000601', 'b0000000-0000-0000-0000-000000000001',
+  'b0000000-0000-0000-0000-000000000020', 'b0000000-0000-0000-0000-000000000042',
+  '20000000-0000-0000-0000-000000000002', 'ready', 200, 200,
+  now() + interval '1 hour', now(), now()
+);
+insert into public.media_assets (
+  id, reservation_id, school_id, classroom_id, uploader_membership_id,
+  uploader_user_id, status, total_bytes
+) values (
+  'b0000000-0000-0000-0000-000000000602', 'b0000000-0000-0000-0000-000000000601',
+  'b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000020',
+  'b0000000-0000-0000-0000-000000000042', '20000000-0000-0000-0000-000000000002',
+  'pending', 200
+);
+insert into public.media_variants (
+  id, school_id, asset_id, kind, object_key, content_type,
+  byte_size, width, height, status
+) values
+  ('b0000000-0000-0000-0000-000000000611', 'b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000602', 'original', 'originals/b0000000-0000-0000-0000-000000000001/b0000000-0000-0000-0000-000000000602/b0000000-0000-0000-0000-000000000611.jpg', 'image/jpeg', 100, 1000, 1000, 'ready'),
+  ('b0000000-0000-0000-0000-000000000612', 'b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000602', 'display', 'display/b0000000-0000-0000-0000-000000000001/b0000000-0000-0000-0000-000000000602/b0000000-0000-0000-0000-000000000612.jpg', 'image/jpeg', 100, 800, 800, 'ready');
+insert into public.media_asset_children (asset_id, child_id, school_id)
+values ('b0000000-0000-0000-0000-000000000602', 'b0000000-0000-0000-0000-000000000030', 'b0000000-0000-0000-0000-000000000001');
+insert into public.school_storage_usage (school_id, used_bytes)
+values ('b0000000-0000-0000-0000-000000000001', 200)
+on conflict (school_id) do update set used_bytes = excluded.used_bytes;
+update public.media_assets set status = 'ready', ready_at = now() where id = 'b0000000-0000-0000-0000-000000000602';
+
+select extensions.is(
+  (select reason from private.media_cleanup_jobs where asset_id = 'b0000000-0000-0000-0000-000000000602' and scope = 'original'),
+  'original_retention',
+  'ready media schedules sanitized-original cleanup after its retention period'
+);
+update private.media_cleanup_jobs set available_at = now()
+where asset_id = 'b0000000-0000-0000-0000-000000000602' and scope = 'original';
+
+set local role service_role;
+create temp table original_cleanup_claim on commit drop as
+select * from public.claim_media_cleanup_jobs(50);
+select extensions.is(
+  (select cardinality(object_keys) from original_cleanup_claim where asset_id = 'b0000000-0000-0000-0000-000000000602'),
+  1,
+  'retention cleanup targets only the sanitized original object'
+);
+select public.complete_media_cleanup_job(
+  (select cleanup_id from original_cleanup_claim where asset_id = 'b0000000-0000-0000-0000-000000000602'),
+  'success', null
+);
+reset role;
+
+select extensions.is((select status::text from public.media_variants where id = 'b0000000-0000-0000-0000-000000000611'), 'deleted', 'retained original metadata is marked deleted after provider cleanup');
+select extensions.is((select status::text from public.media_variants where id = 'b0000000-0000-0000-0000-000000000612'), 'ready', 'original cleanup preserves the display variant');
+select extensions.is((select status::text from public.media_assets where id = 'b0000000-0000-0000-0000-000000000602'), 'ready', 'original cleanup does not withdraw active media');
+select extensions.is((select used_bytes::integer from public.school_storage_usage where school_id = 'b0000000-0000-0000-0000-000000000001'), 100, 'original cleanup releases only the original variant quota');
+
 -- Access-lifecycle hardening: the database, not UI visibility, enforces current
 -- school/structure/relationship state and the narrow membership mutation path.
 select extensions.is(

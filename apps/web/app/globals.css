@@ -358,6 +358,8 @@ progress { width: 100%; height: .55rem; border: 0; border-radius: 4px; overflow:
 .today-photos { max-width: 52rem; border-bottom: 1px solid var(--loop-border); padding-bottom: 1.25rem; }
 .private-photo { min-width: 0; }
 .private-photo > p { margin: .4rem 0 0; color: var(--loop-text-muted); font-size: .75rem; }
+.photo-actions { display: flex; justify-content: flex-end; margin-top: .25rem; }
+.photo-actions .text-button { min-height: 44px; }
 .photo-frame { display: block; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border: 1px solid var(--loop-border); border-radius: var(--loop-radius-sm); background: var(--loop-surface); padding: 0; cursor: zoom-in; }
 .photo-frame img { width: 100%; height: 100%; object-fit: cover; }
 .photo-placeholder { display: grid; width: 100%; height: 100%; place-content: center; place-items: center; gap: .45rem; color: var(--loop-text-muted); font-size: .75rem; }

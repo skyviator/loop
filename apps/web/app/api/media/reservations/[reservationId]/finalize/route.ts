@@ -1,7 +1,8 @@
 import { getViewer } from "@/lib/auth";
+import { scheduleMediaCleanup } from "@/lib/media/schedule";
 import { hasSameOrigin } from "@/lib/request-security";
 import { schedulePushDispatch } from "@/lib/push/schedule";
-import { deletePhotoObject, headPhotoObject } from "@/lib/r2";
+import { headPhotoObject } from "@/lib/r2";
 import { createServerAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -37,8 +38,8 @@ export async function POST(request: Request, context: { params: Promise<{ reserv
     schedulePushDispatch();
     return Response.json({ assetId: finalized.data }, { headers: { "Cache-Control": "no-store" } });
   } catch {
-    await Promise.allSettled(variants.data.map((variant) => deletePhotoObject(variant.object_key)));
     await admin.rpc("fail_photo_upload", { target_reservation_id: reservationId });
+    scheduleMediaCleanup();
     return Response.json({ error: "Uploaded photo verification failed. No photo was saved." }, { status: 422 });
   }
 }
