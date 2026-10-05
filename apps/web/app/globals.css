@@ -293,7 +293,7 @@ progress { width: 100%; height: .55rem; border: 0; border-radius: 4px; overflow:
 .attendance-exceptions { position: relative; }
 .attendance-exceptions summary { display: flex; min-height: 48px; align-items: center; color: var(--loop-primary-strong); font-size: .72rem; font-weight: 700; cursor: pointer; }
 .attendance-exceptions > div { position: absolute; z-index: 2; top: 100%; right: 0; display: flex; border: 1px solid var(--loop-border); border-radius: var(--loop-radius-sm); background: var(--loop-surface); box-shadow: 0 8px 24px rgba(36,50,56,.12); padding: .25rem; }
-.attendance-row { grid-template-columns: 2.4rem minmax(8rem, 1fr) 8rem minmax(9rem, auto); }
+.attendance-row { grid-template-columns: 2.4rem minmax(0, 1fr) 8rem minmax(9rem, auto); }
 .attendance-mark { display: grid; width: 2rem; height: 2rem; place-items: center; border: 1px solid var(--loop-border-strong); border-radius: 50%; color: var(--loop-text-muted); }
 .attendance-mark.is-present { border-color: var(--loop-primary); background: var(--loop-primary); color: white; }
 .quick-actions { display: flex; gap: .25rem; overflow-x: auto; padding-bottom: .5rem; }
