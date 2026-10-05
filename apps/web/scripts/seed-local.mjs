@@ -68,6 +68,7 @@ const secondSchoolId = id();
 const branchId = id();
 const secondBranchId = id();
 const classroomId = id();
+const teacherSecondClassroomId = id();
 const secondClassroomId = id();
 const adminMembershipId = id();
 const teacherMembershipId = id();
@@ -119,17 +120,18 @@ await result(
 await result(
   admin.from("classrooms").insert([
     { id: classroomId, school_id: schoolId, branch_id: branchId, name: "Sunbirds" },
+    { id: teacherSecondClassroomId, school_id: schoolId, branch_id: branchId, name: "Kingfishers" },
     { id: secondClassroomId, school_id: secondSchoolId, branch_id: secondBranchId, name: "Fireflies" },
   ]),
   "Create classrooms",
 );
 await result(
-  admin.from("classroom_staff_assignments").insert({
-    school_id: schoolId,
-    classroom_id: classroomId,
-    membership_id: teacherMembershipId,
-  }),
-  "Assign teacher",
+  admin.from("classroom_staff_assignments").insert({ school_id: schoolId, classroom_id: classroomId, membership_id: teacherMembershipId }),
+  "Assign teacher to primary classroom",
+);
+await result(
+  admin.from("classroom_staff_assignments").insert({ school_id: schoolId, classroom_id: teacherSecondClassroomId, membership_id: teacherMembershipId }),
+  "Assign teacher to second classroom",
 );
 
 const childNames = [
@@ -138,12 +140,18 @@ const childNames = [
   "Mihir Gunasekara", "Leah Thomas", "Kavin Raj", "Amaya Herath", "Noah Daniels",
 ];
 const children = childNames.map((preferred_name) => ({ id: id(), school_id: schoolId, preferred_name }));
-await result(admin.from("children").insert(children), "Create children");
+const secondClassChildren = ["Ira Samarakoon", "Theo Fernando", "Naya Rahman"].map((preferred_name) => ({ id: id(), school_id: schoolId, preferred_name }));
+const allChildren = [...children, ...secondClassChildren];
+await result(admin.from("children").insert(allChildren), "Create children");
 const enrollments = children.map((child) => ({
   id: id(), school_id: schoolId, child_id: child.id, classroom_id: classroomId,
   starts_on: new Date().toISOString().slice(0, 10), status: "active",
 }));
-await result(admin.from("child_enrollments").insert(enrollments), "Enroll children");
+const secondClassEnrollments = secondClassChildren.map((child) => ({
+  id: id(), school_id: schoolId, child_id: child.id, classroom_id: teacherSecondClassroomId,
+  starts_on: new Date().toISOString().slice(0, 10), status: "active",
+}));
+await result(admin.from("child_enrollments").insert([...enrollments, ...secondClassEnrollments]), "Enroll children");
 await result(
   admin.from("child_guardians").insert(children.map((child, index) => ({
     school_id: schoolId,
@@ -166,10 +174,10 @@ await result(
   "Enable core features",
 );
 await result(
-  admin.from("child_media_consents").upsert(children.map((child, index) => ({
+  admin.from("child_media_consents").upsert(allChildren.map((child, index) => ({
     child_id: child.id,
     school_id: schoolId,
-    state: index < 10 ? "granted" : index < 13 ? "denied" : "not_recorded",
+    state: index < 10 || index >= children.length && index < children.length + 2 ? "granted" : index < 13 || index === children.length + 2 ? "denied" : "not_recorded",
     changed_by_user_id: byRole.school_admin.id,
     changed_at: new Date().toISOString(),
   }))),
@@ -212,7 +220,7 @@ await result(admin.from("calendar_events").insert({
 }), "Create calendar event");
 
 const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Colombo" }).format(new Date());
-const weekday = new Date(`${today}T00:00:00+05:30`).getUTCDay() || 7;
+const weekday = new Date(`${today}T12:00:00Z`).getUTCDay() || 7;
 const todayStart = new Date(`${today}T00:00:00+05:30`).getTime();
 const checkedInAt = new Date(Math.max(todayStart, Date.now() - 5 * 60_000)).toISOString();
 const slots = [
@@ -226,7 +234,15 @@ const slots = [
   id: id(), school_id: schoolId, classroom_id: classroomId, day_of_week: weekday,
   start_time, end_time, title, care_feature_key, created_by_user_id: byRole.school_admin.id,
 }));
-await result(admin.from("timetable_slots").insert(slots), "Create timetable");
+const secondClassSlots = [
+  ["09:00", "09:25", "Welcome circle", "activities"],
+  ["10:15", "10:35", "Fruit and water", "water"],
+  ["13:00", "13:45", "Quiet rest", "sleep"],
+].map(([start_time, end_time, title, care_feature_key]) => ({
+  id: id(), school_id: schoolId, classroom_id: teacherSecondClassroomId, day_of_week: weekday,
+  start_time, end_time, title, care_feature_key, created_by_user_id: byRole.school_admin.id,
+}));
+await result(admin.from("timetable_slots").insert([...slots, ...secondClassSlots]), "Create timetable");
 
 const attendance = children.map((child, index) => ({
   school_id: schoolId,
@@ -240,6 +256,17 @@ const attendance = children.map((child, index) => ({
   recorded_by_user_id: byRole.teacher.id,
 }));
 await result(admin.from("attendance_records").insert(attendance), "Create attendance");
+await result(admin.from("attendance_records").insert(secondClassChildren.map((child, index) => ({
+  school_id: schoolId,
+  child_id: child.id,
+  classroom_id: teacherSecondClassroomId,
+  enrollment_id: secondClassEnrollments[index].id,
+  service_date: today,
+  status: index < 2 ? "present" : "expected",
+  checked_in_at: index < 2 ? checkedInAt : null,
+  recorded_by_membership_id: teacherMembershipId,
+  recorded_by_user_id: byRole.teacher.id,
+}))), "Create second classroom attendance");
 await result(
   admin.from("care_events").insert({
     school_id: schoolId,
@@ -280,6 +307,12 @@ await writeFile(
     invitation: {
       email: "new.teacher@loop.local",
       url: `http://127.0.0.1:3000/invite?token=${invitationToken}`,
+    },
+    fixtures: {
+      sunbirds: classroomId,
+      kingfishers: teacherSecondClassroomId,
+      kingfisherChild: secondClassChildren[0].id,
+      unassigned: secondClassroomId,
     },
   }, null, 2)}\n`,
   { mode: 0o600 },

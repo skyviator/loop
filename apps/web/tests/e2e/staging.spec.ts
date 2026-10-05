@@ -206,9 +206,11 @@ test.describe.serial("Loop staging HTTPS verification", () => {
       await expect(teacher.page.getByText("Child One", { exact: true }).first()).toBeVisible();
       await expect(teacher.page.getByText("Child Two", { exact: true }).first()).toBeVisible();
       await expect(teacher.page.getByText("Child Three", { exact: true })).toHaveCount(0);
+      await expect(teacher.page.getByLabel("Active classroom")).toHaveCount(0);
       await teacher.page.goto(`/teacher?classroom=${credentials.fixtures.sunbeams}`);
-      await expect(teacher.page.getByRole("heading", { name: "Butterflies" })).toBeVisible();
+      await expect(teacher.page.getByText("This page could not be found.")).toBeVisible();
       await expect(teacher.page.getByText("Child Three", { exact: true })).toHaveCount(0);
+      await teacher.page.goto("/teacher");
       const arrival = teacher.page.locator(".bulk-arrivals label").filter({ hasText: "Child One" });
       await arrival.locator("input").check();
       const checkIn = teacher.page.waitForResponse((response) => new URL(response.url()).pathname === "/teacher" && response.request().method() === "POST");
@@ -217,8 +219,14 @@ test.describe.serial("Loop staging HTTPS verification", () => {
       await teacher.page.reload();
       await expect(teacher.page.locator(".attendance-row").filter({ hasText: "Child One" })).toContainText("Checked in");
       const carePanel = teacher.page.getByRole("tabpanel");
+      const careChildren = carePanel.locator('input[name="child_id"]');
+      for (let index = 0; index < await careChildren.count(); index += 1) {
+        const checkbox = careChildren.nth(index);
+        const row = checkbox.locator("xpath=ancestor::*[contains(@class, 'bulk-child')]");
+        if (!await row.getByText("Child One", { exact: true }).count()) await checkbox.uncheck();
+      }
       await carePanel.getByRole("button", { name: "Save meal update" }).click();
-      await expect(carePanel.getByRole("status")).toHaveText("2 care updates saved.");
+      await expect(carePanel.getByRole("status")).toHaveText("1 care update saved.");
       await teacher.page.goto("/school");
       await expect(teacher.page).toHaveURL(/\/teacher/);
 

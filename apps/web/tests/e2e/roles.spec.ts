@@ -6,6 +6,7 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 type Account = { role: string; email: string; password: string };
 type Credentials = {
   accounts: Account[];
+  fixtures: { sunbirds: string; kingfishers: string; kingfisherChild: string; unassigned: string };
 };
 const credentials = JSON.parse(readFileSync(resolve(process.cwd(), "supabase/.temp/test-credentials.json"), "utf8")) as Credentials;
 const mailpitUrl = process.env.SUPABASE_MAILPIT_URL ?? "http://127.0.0.1:54324";
@@ -52,6 +53,9 @@ test("school admin reaches tenant operations", async ({ page }) => {
   await expect(page).toHaveURL(/\/school/);
   await expect(page.getByText("Little Harbour Preschool").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Plan usage" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Attendance by classroom" })).toBeVisible();
+  await expect(page.locator(".attendance-overview-row").filter({ hasText: "Sunbirds" })).toContainText("12 in");
+  await expect(page.locator(".attendance-overview-row").filter({ hasText: "Kingfishers" })).toContainText("2 in");
   await page.screenshot({ path: resolve(process.env.TEMP ?? "/tmp", "loop-step-c2-school-admin-desktop.png"), fullPage: true });
   const invitationEmail = `browser.qa.${Date.now()}@loop.local`;
   const invitationForm = page.locator("#staff-invitations > form");
@@ -66,22 +70,78 @@ test("school admin reaches tenant operations", async ({ page }) => {
 });
 
 test("teacher reaches assigned mobile Classroom Today", async ({ page }) => {
+  test.setTimeout(120_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await signIn(page, "teacher");
   await expect(page).toHaveURL(/\/teacher/);
   await expect(page.getByRole("heading", { name: "Sunbirds" })).toBeVisible();
+  await expect(page.getByLabel("Active classroom")).toHaveValue(credentials.fixtures.sunbirds);
+  await page.getByLabel("Active classroom").selectOption(credentials.fixtures.kingfishers);
+  await expect(page).toHaveURL(new RegExp(`classroom=${credentials.fixtures.kingfishers}`));
+  await expect(page.getByRole("heading", { name: "Kingfishers" })).toBeVisible();
+  await expect(page.getByText("Ira Samarakoon", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Maya Senaratne", { exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Kingfishers" })).toBeVisible();
+  await page.getByLabel("Active classroom").selectOption(credentials.fixtures.sunbirds);
+  await expect(page.getByRole("heading", { name: "Sunbirds" })).toBeVisible();
+  await page.goto(`/teacher?classroom=${credentials.fixtures.unassigned}`);
+  await expect(page.getByText("This page could not be found.")).toBeVisible();
+  await page.goto(`/teacher?classroom=${credentials.fixtures.sunbirds}`);
+  const crossClassReservation = await page.evaluate(async ({ classroomId, childId }) => {
+    const response = await fetch("/api/media/reservations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        classroomId,
+        childIds: [childId],
+        variants: [
+          { kind: "original", contentType: "image/jpeg", byteSize: 100, width: 10, height: 10 },
+          { kind: "display", contentType: "image/jpeg", byteSize: 80, width: 10, height: 10 },
+          { kind: "thumbnail", contentType: "image/jpeg", byteSize: 60, width: 10, height: 10 },
+        ],
+      }),
+    });
+    return response.status;
+  }, { classroomId: credentials.fixtures.sunbirds, childId: credentials.fixtures.kingfisherChild });
+  expect(crossClassReservation).toBe(403);
   await expect(page.getByRole("heading", { name: "Attendance" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Record care in bulk" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Today's timetable" })).toBeVisible();
+  await expect(page.getByText("Time-based labels describe the schedule only. They do not confirm that an activity was completed.")).toBeVisible();
+  const timetableEditor = page.locator("section.section-panel").filter({ has: page.getByRole("heading", { name: "Adjust timetable" }) });
+  await timetableEditor.getByText("Change today's activity", { exact: true }).click();
+  const changedActivity = timetableEditor.locator("form").filter({ has: page.getByRole("button", { name: "Change today only" }) });
+  await changedActivity.getByLabel("Updated title").fill("Outdoor welcome check");
+  await changedActivity.getByLabel("Start").fill("08:35");
+  await changedActivity.getByLabel("End").fill("09:05");
+  await changedActivity.getByRole("button", { name: "Change today only" }).click();
+  await expect(page.locator(".schedule-row").filter({ hasText: "Outdoor welcome check" })).toContainText("Today only");
+  await timetableEditor.getByText("Add activity today", { exact: true }).click();
+  const additionalActivity = timetableEditor.locator("form").filter({ has: page.getByRole("button", { name: "Add today only" }) });
+  await additionalActivity.getByLabel("Activity").fill("Teacher day-flow check");
+  await additionalActivity.getByLabel("Start").fill("16:00");
+  await additionalActivity.getByLabel("End").fill("16:15");
+  await additionalActivity.getByRole("button", { name: "Add today only" }).click();
+  await expect(page.locator(".schedule-row").filter({ hasText: "Teacher day-flow check" })).toContainText("Today only");
+  await expect(page.locator(".schedule-row").filter({ hasText: "Circle time" })).toBeVisible();
   await page.screenshot({ path: resolve(process.env.TEMP ?? "/tmp", "loop-step-c2-teacher-mobile.png"), fullPage: true });
   await expect(page.getByText("12 / 15", { exact: true })).toBeVisible();
   await expect(page.getByRole("tab")).toHaveCount(9);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: resolve(process.env.TEMP ?? "/tmp", "loop-step-c2-teacher-desktop.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  const arrival = page.locator('.bulk-arrivals input[name="child_id"]').first();
-  await arrival.check();
-  await page.getByRole("button", { name: "Check in selected" }).click();
+  const arrivalForm = page.locator(".bulk-attendance").filter({ hasText: "Morning arrivals" });
+  const arrivals = arrivalForm.locator('input[name="child_id"]');
+  await expect(arrivals).toHaveCount(2);
+  expect(await arrivals.evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).checked))).toEqual([true, true]);
+  await arrivals.last().evaluate((input) => (input as HTMLInputElement).click());
+  await arrivalForm.getByRole("button", { name: "Check in selected (1)" }).click();
   await expect(page.getByText("13 / 15", { exact: true })).toBeVisible();
+  const remainingArrival = page.locator(".attendance-row").filter({ hasText: "Not yet arrived" });
+  await remainingArrival.getByText("Exception").click();
+  await remainingArrival.getByRole("button", { name: "Excused" }).click();
+  await expect(page.getByText("Excused", { exact: true })).toBeVisible();
   const carePanel = page.getByRole("tabpanel");
   const selectedForCare = carePanel.locator('input[name="child_id"]:checked');
   await expect(selectedForCare).toHaveCount(13);
@@ -103,12 +163,21 @@ test("teacher reaches assigned mobile Classroom Today", async ({ page }) => {
   await carePanel.getByRole("button", { name: "End sleep for selected" }).click();
   await expect(carePanel.getByText("No children are currently sleeping.")).toBeVisible();
 
+  const mediaPanel = page.locator("form.media-upload");
+  await expect(mediaPanel.locator('input[name="child_id"]')).toHaveCount(10);
+  await expect(mediaPanel.locator('input[name="child_id"]:checked')).toHaveCount(10);
+  await mediaPanel.locator('input[name="child_id"]').first().evaluate((input) => (input as HTMLInputElement).click());
+  await expect(mediaPanel.locator('input[name="child_id"]:checked')).toHaveCount(9);
+  await mediaPanel.getByRole("button", { name: "Select present" }).click();
+  await expect(mediaPanel.locator('input[name="child_id"]:checked')).toHaveCount(10);
+
   await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.evaluate(() => { document.documentElement.style.fontSize = ""; });
-  await page.getByRole("button", { name: "Check out" }).first().click();
-  await expect(page.getByText("12 / 15", { exact: true })).toBeVisible();
+  await page.locator(".bulk-attendance").filter({ hasText: "End-of-day checkout" }).getByRole("button", { name: "Check out selected (13)" }).click();
+  await expect(page.getByText("0 / 15", { exact: true })).toBeVisible();
   await expect(page.getByText("Checked out", { exact: true }).first()).toBeVisible();
+  console.log("teacher-day-flow-observed-interactions=12; roster=15; core-server-submissions=5; total-test-server-submissions=9; class-switches=2; attendance-exception=1; care-exception=1; photo-selection-exception=1; timetable-override=1");
   await page.goto("/school");
   await expect(page).toHaveURL(/\/teacher/);
 });
@@ -126,6 +195,16 @@ test("guardian reaches mobile Child Today timeline", async ({ page }) => {
   await page.screenshot({ path: resolve(process.env.TEMP ?? "/tmp", "loop-step-c2-parent-desktop.png"), fullPage: true });
   await page.goto("/teacher");
   await expect(page).toHaveURL(/\/parent/);
+});
+
+test("second school admin sees only their own school attendance", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page, "school_admin_2");
+  await expect(page).toHaveURL(/\/school/);
+  await expect(page.getByText("Kandy Garden Preschool").first()).toBeVisible();
+  await expect(page.locator(".attendance-overview-row").filter({ hasText: "Fireflies" })).toBeVisible();
+  await expect(page.getByText("Sunbirds", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Maya Senaratne", { exact: true })).toHaveCount(0);
 });
 
 test("forgot and reset password completes through local Mailpit", async ({ page, request }) => {

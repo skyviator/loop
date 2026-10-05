@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { LoopIcon } from "@/components/loop-icon";
+import { defaultPhotoSelection } from "@/lib/teacher-day-flow";
 
 type Child = { id: string; name: string; present: boolean; consent: "not_recorded" | "granted" | "denied" };
 type UploadState = { name: string; status: "preparing" | "uploading" | "complete" | "error"; message: string };
@@ -24,8 +25,10 @@ export function TeacherMediaPanel({ classroomId, roster }: { classroomId: string
   const formRef = useRef<HTMLFormElement>(null);
   const [states, setStates] = useState<UploadState[]>([]);
   const [busy, setBusy] = useState(false);
-  const eligible = roster.filter((child) => child.consent === "granted");
+  const eligible = roster.filter((child) => child.consent === "granted").sort((left, right) => Number(right.present) - Number(left.present));
   const blocked = roster.filter((child) => child.consent !== "granted");
+  const presentEligibleIds = defaultPhotoSelection(roster);
+  const [selected, setSelected] = useState(() => new Set(presentEligibleIds));
 
   async function upload(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,6 +75,7 @@ export function TeacherMediaPanel({ classroomId, roster }: { classroomId: string
         }
       });
       formRef.current?.reset();
+      setSelected(new Set(presentEligibleIds));
       router.refresh();
     } finally {
       setBusy(false);
@@ -83,7 +87,8 @@ export function TeacherMediaPanel({ classroomId, roster }: { classroomId: string
     <p className="muted">Up to 3 photos, 12 MB each. Loop re-encodes JPEG, PNG, and WebP, removes embedded metadata, and creates display and thumbnail sizes before upload.</p>
     <p className="status-note status-warning">Check the full photo before sharing. Loop cannot detect an untagged child in the background, so staff must still follow the nursery&apos;s consent policy.</p>
     <fieldset className="tag-children"><legend>Tag children</legend>
-      {eligible.map((child) => <label className="check-field" key={child.id}><input type="checkbox" name="child_id" value={child.id} disabled={busy} /> {child.name}<small>{child.present ? "Present today" : "Not present now"}</small></label>)}
+      {presentEligibleIds.length ? <div className="tag-selection-actions"><span>Present, consented children are selected</span><span><button className="text-button" type="button" disabled={busy} onClick={() => setSelected(new Set(presentEligibleIds))}>Select present</button><button className="text-button" type="button" disabled={busy} onClick={() => setSelected(new Set())}>Clear</button></span></div> : null}
+      {eligible.map((child) => <label className="check-field" key={child.id}><input type="checkbox" name="child_id" value={child.id} disabled={busy} checked={selected.has(child.id)} onChange={(event) => { const checked = event.currentTarget.checked; setSelected((current) => { const next = new Set(current); if (checked) next.add(child.id); else next.delete(child.id); return next; }); }} /> {child.name}<small>{child.present ? "Present today" : "Not present now"}</small></label>)}
       {!eligible.length ? <p className="status-note status-warning">No children have granted media consent. A school administrator must record consent first.</p> : null}
     </fieldset>
     {blocked.length ? <details className="consent-note"><summary>{blocked.length} children cannot be tagged</summary><p>{blocked.map((child) => `${child.name} — ${child.consent === "denied" ? "consent denied" : "consent not recorded"}`).join("; ")}</p></details> : null}

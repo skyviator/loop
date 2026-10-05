@@ -467,13 +467,21 @@ export async function createTimetableExceptionAction(formData: FormData) {
   const viewer = await requireViewer(["school_admin", "teacher"]);
   const kind = oneOf(formData.get("kind"), ["cancelled", "changed", "additional"] as const, "Exception");
   const slotValue = formData.get("timetable_slot_id");
-  const { error } = await (await createClient()).from("timetable_exceptions").insert({
-    school_id: viewer.schoolId!, classroom_id: uuid(formData.get("classroom_id"), "Classroom"),
-    timetable_slot_id: kind === "additional" ? null : uuid(slotValue, "Timetable slot"),
+  const classroomId = uuid(formData.get("classroom_id"), "Classroom");
+  const slotId = kind === "additional" ? null : uuid(slotValue, "Timetable slot");
+  const usesReplacement = kind === "changed" || kind === "additional";
+  const supabase = await createClient();
+  if (slotId) {
+    const slot = await supabase.from("timetable_slots").select("id").eq("school_id", viewer.schoolId!).eq("classroom_id", classroomId).eq("id", slotId).eq("status", "active").maybeSingle();
+    if (slot.error || !slot.data) throw new Error("The selected activity is not available in this classroom.");
+  }
+  const { error } = await supabase.from("timetable_exceptions").insert({
+    school_id: viewer.schoolId!, classroom_id: classroomId,
+    timetable_slot_id: slotId,
     service_date: requiredText(formData.get("service_date"), "Date", 10), kind,
-    replacement_title: kind === "additional" ? requiredText(formData.get("replacement_title"), "Activity", 120) : null,
-    replacement_start_time: kind === "additional" ? requiredText(formData.get("replacement_start_time"), "Start time", 8) : null,
-    replacement_end_time: kind === "additional" ? requiredText(formData.get("replacement_end_time"), "End time", 8) : null,
+    replacement_title: usesReplacement ? requiredText(formData.get("replacement_title"), "Activity", 120) : null,
+    replacement_start_time: usesReplacement ? requiredText(formData.get("replacement_start_time"), "Start time", 8) : null,
+    replacement_end_time: usesReplacement ? requiredText(formData.get("replacement_end_time"), "End time", 8) : null,
     reason: typeof formData.get("reason") === "string" ? String(formData.get("reason")).slice(0, 300) || null : null,
     created_by_user_id: viewer.userId,
   });
@@ -481,59 +489,85 @@ export async function createTimetableExceptionAction(formData: FormData) {
   revalidatePath(viewer.role === "teacher" ? "/teacher" : "/school");
 }
 
-export async function setAttendanceAction(formData: FormData) {
-  const viewer = await requireViewer(["school_admin", "teacher"]);
-  const childId = uuid(formData.get("child_id"), "Child");
-  const action = oneOf(formData.get("attendance_action"), ["check_in", "check_out"] as const, "Attendance action");
-  const supabase = await createClient();
-  const enrollment = await supabase.from("child_enrollments").select("id, classroom_id").eq("child_id", childId).eq("status", "active").single();
-  if (enrollment.error || !viewer.membershipId) throw new Error("Active enrollment was not found.");
-  const serviceDate = localDate(viewer.timezone);
-  if (action === "check_out") {
-    const record = await supabase.from("attendance_records").select("id, status, checked_out_at").eq("child_id", childId).eq("service_date", serviceDate).single();
-    if (record.error || record.data.status !== "present" || record.data.checked_out_at) throw new Error("Only a currently present child can be checked out.");
-    const { error } = await supabase.from("attendance_records").update({ checked_out_at: new Date().toISOString(), recorded_by_membership_id: viewer.membershipId, recorded_by_user_id: viewer.userId }).eq("id", record.data.id);
-    if (error) throw new Error(error.message);
-    schedulePushDispatch();
-    revalidatePath("/teacher");
-    return;
-  }
-  const { error } = await supabase.from("attendance_records").upsert({
-    school_id: viewer.schoolId!, child_id: childId, classroom_id: enrollment.data.classroom_id,
-    enrollment_id: enrollment.data.id, service_date: serviceDate, status: "present",
-    checked_in_at: new Date().toISOString(),
-    checked_out_at: null, recorded_by_membership_id: viewer.membershipId, recorded_by_user_id: viewer.userId,
-  }, { onConflict: "child_id,service_date" });
-  if (error) throw new Error(error.message);
-  schedulePushDispatch();
-  revalidatePath("/teacher");
-}
+type AttendanceOperation = "check_in" | "check_out" | "absent" | "excused";
 
-export async function bulkCheckInAction(formData: FormData) {
+async function performAttendanceBatch(formData: FormData) {
   const viewer = await requireViewer(["school_admin", "teacher"]);
   if (!viewer.membershipId || !viewer.schoolId) throw new Error("Staff membership is required.");
   const childIds = [...new Set(formData.getAll("child_id").map((value) => uuid(value, "Child")))];
-  if (!childIds.length) throw new Error("Choose at least one arriving child.");
+  if (!childIds.length) throw new Error("Choose at least one child.");
+  if (childIds.length > 50) throw new Error("Choose no more than 50 children at once.");
+  const classroomId = uuid(formData.get("classroom_id"), "Classroom");
+  const operation = oneOf(formData.get("attendance_action"), ["check_in", "check_out", "absent", "excused"] as const, "Attendance action") as AttendanceOperation;
   const supabase = await createClient();
   const serviceDate = localDate(viewer.timezone);
   const [enrollments, existing] = await Promise.all([
-    supabase.from("child_enrollments").select("id, child_id, classroom_id").eq("school_id", viewer.schoolId).eq("status", "active").in("child_id", childIds),
-    supabase.from("attendance_records").select("child_id, status, checked_out_at").eq("school_id", viewer.schoolId).eq("service_date", serviceDate).in("child_id", childIds),
+    supabase.from("child_enrollments").select("id, child_id, classroom_id").eq("school_id", viewer.schoolId).eq("classroom_id", classroomId).eq("status", "active").lte("starts_on", serviceDate).or(`ends_on.is.null,ends_on.gte.${serviceDate}`).in("child_id", childIds),
+    supabase.from("attendance_records").select("id, child_id, status, checked_in_at, checked_out_at").eq("school_id", viewer.schoolId).eq("classroom_id", classroomId).eq("service_date", serviceDate).in("child_id", childIds),
   ]);
-  if (enrollments.error || existing.error || enrollments.data.length !== childIds.length) throw new Error("The arriving children could not be verified.");
-  const eligible = new Set(existing.data.filter((row) => row.status === "expected" && !row.checked_out_at).map((row) => row.child_id));
-  existing.data.forEach((row) => { if (row.status !== "expected" || row.checked_out_at) eligible.delete(row.child_id); });
-  const rows = enrollments.data.filter((row) => !existing.data.some((item) => item.child_id === row.child_id) || eligible.has(row.child_id)).map((row) => ({
+  if (enrollments.error || existing.error || enrollments.data.length !== childIds.length) throw new Error("The selected children are not available in this classroom.");
+  const existingByChild = new Map(existing.data.map((row) => [row.child_id, row]));
+  if (operation === "check_out") {
+    const recordIds = childIds.map((childId) => existingByChild.get(childId)).filter((record) => record?.status === "present" && !record.checked_out_at).map((record) => record!.id);
+    if (recordIds.length !== childIds.length) throw new Error("Only children who are currently present can be checked out.");
+    const { data, error } = await supabase.from("attendance_records").update({
+      checked_out_at: new Date().toISOString(),
+      recorded_by_membership_id: viewer.membershipId,
+      recorded_by_user_id: viewer.userId,
+    }).eq("school_id", viewer.schoolId).eq("classroom_id", classroomId).eq("service_date", serviceDate).eq("status", "present").is("checked_out_at", null).in("id", recordIds).select("id");
+    if (error || data.length !== childIds.length) throw new Error("Attendance changed while the checkout was being saved. Refresh and try again.");
+    schedulePushDispatch();
+    revalidatePath("/teacher");
+    revalidatePath("/school");
+    revalidatePath("/parent");
+    return childIds.length;
+  }
+  const unresolved = childIds.every((childId) => {
+    const record = existingByChild.get(childId);
+    if (!record) return true;
+    if (operation === "check_in") return !record.checked_out_at && record.status !== "present";
+    return !record.checked_in_at && !record.checked_out_at && record.status !== "present";
+  });
+  if (!unresolved) throw new Error(operation === "check_in" ? "One or more selected children are already checked in or out." : "Only children who have not checked in can be marked absent or excused.");
+  const timestamp = new Date().toISOString();
+  const rows = enrollments.data.map((row) => ({
     school_id: viewer.schoolId!, child_id: row.child_id, classroom_id: row.classroom_id,
-    enrollment_id: row.id, service_date: serviceDate, status: "present" as const,
-    checked_in_at: new Date().toISOString(), checked_out_at: null,
+    enrollment_id: row.id, service_date: serviceDate,
+    status: operation === "check_in" ? "present" as const : operation,
+    checked_in_at: operation === "check_in" ? timestamp : null,
+    checked_out_at: null,
     recorded_by_membership_id: viewer.membershipId!, recorded_by_user_id: viewer.userId,
   }));
-  if (!rows.length) throw new Error("The selected children are already resolved for today.");
   const { error } = await supabase.from("attendance_records").upsert(rows, { onConflict: "child_id,service_date" });
   if (error) throw new Error(error.message);
-  schedulePushDispatch();
+  if (operation === "check_in") schedulePushDispatch();
   revalidatePath("/teacher");
+  revalidatePath("/school");
+  revalidatePath("/parent");
+  return childIds.length;
+}
+
+export async function setAttendanceAction(formData: FormData) {
+  const single = new FormData();
+  single.set("child_id", uuid(formData.get("child_id"), "Child"));
+  single.set("classroom_id", uuid(formData.get("classroom_id"), "Classroom"));
+  single.set("attendance_action", oneOf(formData.get("attendance_action"), ["check_in", "check_out", "absent", "excused"] as const, "Attendance action"));
+  await performAttendanceBatch(single);
+}
+
+export async function updateAttendanceBatchAction(_previous: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const operation = oneOf(formData.get("attendance_action"), ["check_in", "check_out"] as const, "Attendance action");
+    const saved = await performAttendanceBatch(formData);
+    return { status: "success", message: `${saved} ${saved === 1 ? "child" : "children"} ${operation === "check_in" ? "checked in" : "checked out"}.`, saved };
+  } catch (error) {
+    return expectedActionError(error, "Attendance could not be saved. Refresh and review the selected children.");
+  }
+}
+
+export async function bulkCheckInAction(formData: FormData) {
+  if (!formData.get("attendance_action")) formData.set("attendance_action", "check_in");
+  await performAttendanceBatch(formData);
 }
 
 export async function saveCareBatchAction(_previous: ActionState, formData: FormData): Promise<ActionState> {

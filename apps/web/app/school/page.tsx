@@ -16,6 +16,7 @@ import { StaffManagement } from "@/components/staff-management";
 import { requireViewer } from "@/lib/auth";
 import { schoolAdminNavigation } from "@/lib/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { buildAttendanceOverview } from "@/lib/teacher-day-flow";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -24,7 +25,8 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
   const state = await searchParams;
   const supabase = await createClient();
   const schoolId = viewer.schoolId!;
-  const [school, plans, children, enrollments, memberships, branches, classrooms, assignments, guardianLinks, invitations, settings, catalogue, planFeatures, slots, exceptions, audit, mediaConsents, storageUsage, recentPhotos] = await Promise.all([
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: viewer.timezone }).format(new Date());
+  const [school, plans, children, enrollments, memberships, branches, classrooms, assignments, guardianLinks, invitations, settings, catalogue, planFeatures, slots, exceptions, audit, mediaConsents, storageUsage, recentPhotos, attendanceToday] = await Promise.all([
     supabase.from("schools").select("id, name, plan_id, timezone, teachers_can_manage_timetable, teachers_can_publish_announcements, teachers_can_manage_calendar").eq("id", schoolId).single(),
     supabase.from("plans").select("id, label, max_active_children, max_staff, storage_allowance_bytes").eq("status", "active"),
     supabase.from("children").select("id, preferred_name, status").eq("school_id", schoolId).order("preferred_name"),
@@ -44,6 +46,7 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
     supabase.from("child_media_consents").select("child_id, state, changed_at").eq("school_id", schoolId),
     supabase.from("school_storage_usage").select("used_bytes, reserved_bytes").eq("school_id", schoolId).maybeSingle(),
     supabase.from("media_assets").select("id, caption").eq("school_id", schoolId).eq("status", "ready").order("created_at", { ascending: false }).limit(12),
+    supabase.from("attendance_records").select("classroom_id, child_id, status, checked_out_at").eq("school_id", schoolId).eq("service_date", today),
   ]);
 
   const plan = plans.data?.find((item) => item.id === school.data?.plan_id);
@@ -55,7 +58,11 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
   const childLimitReached = activeChildren.length >= (plan?.max_active_children ?? Number.POSITIVE_INFINITY);
   const staffLimitReached = activeStaff.length >= (plan?.max_staff ?? Number.POSITIVE_INFINITY);
   const storageUsed = (storageUsage.data?.used_bytes ?? 0) + (storageUsage.data?.reserved_bytes ?? 0);
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: viewer.timezone }).format(new Date());
+  const attendanceOverview = buildAttendanceOverview(
+    (classrooms.data ?? []).filter((room) => room.status === "active").map((room) => ({ id: room.id, name: room.name })),
+    (enrollments.data ?? []).filter((enrollment) => enrollment.status === "active" && enrollment.starts_on <= today && (!enrollment.ends_on || enrollment.ends_on >= today)),
+    attendanceToday.data ?? [],
+  );
   const invitationClock = new Date().toISOString();
   const localInviteUrl = state.invite && /^http:\/\/127\.0\.0\.1:3000\/invite\?token=[A-Za-z0-9_-]+$/.test(state.invite) ? state.invite : null;
   const invitationMessage = [
@@ -78,6 +85,7 @@ export default async function SchoolPage({ searchParams }: { searchParams: Promi
     {membershipError ? <StatusNote tone="warning">{membershipError}</StatusNote> : null}
     {staffError ? <StatusNote tone="warning">{staffError}</StatusNote> : null}
     <section className="overview-band"><Stat value={activeChildren.length} label="active children" /><Stat value={activeStaff.length} label="active staff" /><Stat value={branches.data?.filter((item) => item.status === "active").length ?? 0} label="branches" /><Stat value={classrooms.data?.filter((item) => item.status === "active").length ?? 0} label="classrooms" /></section>
+    <section className="section-panel attendance-overview"><div className="section-heading"><div><p className="eyebrow">Today</p><h2>Attendance by classroom</h2></div><span className="count-label">{today}</span></div>{attendanceOverview.length ? <div className="attendance-overview-list">{attendanceOverview.map((summary) => <div className="attendance-overview-row" key={summary.classroomId}><strong>{summary.classroomName}</strong><span><b>{summary.checkedIn}</b> in</span><span><b>{summary.checkedOut}</b> out</span><span><b>{summary.absent}</b> absent</span><span><b>{summary.excused}</b> excused</span><span><b>{summary.notArrived}</b> not arrived</span><small>{summary.enrolled} enrolled</small></div>)}</div> : <p className="empty-state">No active classrooms are available.</p>}</section>
     <div className="content-grid">
       <SchoolStructureManagement branches={branches.data ?? []} classrooms={classrooms.data ?? []} assignments={assignments.data ?? []} enrollments={enrollments.data ?? []} today={today} />
 

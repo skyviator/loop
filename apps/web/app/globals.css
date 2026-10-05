@@ -269,6 +269,8 @@ progress { width: 100%; height: .55rem; border: 0; border-radius: 4px; overflow:
 
 .teacher-hero { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--loop-border); padding: .5rem 0 1.5rem; }
 .teacher-hero h2 { font-size: clamp(1.7rem, 4vw, 2.5rem); }
+.classroom-switcher { display: grid; max-width: 20rem; gap: .3rem; margin-top: .65rem; color: var(--loop-text-muted); font-size: .72rem; font-weight: 700; }
+.classroom-switcher select { min-height: 48px; border: 1px solid var(--loop-border-strong); border-radius: var(--loop-radius-sm); background: var(--loop-surface); padding: .6rem .75rem; color: var(--loop-text); }
 .present-count { display: grid; grid-template-columns: auto auto; align-items: baseline; margin: 0; color: var(--loop-primary-strong); }
 .present-count strong { grid-row: span 2; font-size: clamp(3rem, 8vw, 5rem); line-height: .9; letter-spacing: -.08em; }
 .present-count span { padding-left: .8rem; font-size: 1.2rem; font-weight: 700; }
@@ -279,9 +281,19 @@ progress { width: 100%; height: .55rem; border: 0; border-radius: 4px; overflow:
 .now-next .eyebrow { grid-column: 1 / -1; }
 .now-next span { color: var(--loop-text-muted); font-size: .8rem; }
 .attendance-row { display: grid; grid-template-columns: 2.4rem minmax(8rem, 1fr) 7rem 4rem; min-height: 58px; align-items: center; gap: .6rem; border-bottom: 1px solid var(--loop-border); font-size: .82rem; }
-.bulk-arrivals { margin-bottom: .75rem; padding: .85rem; border: 1px solid var(--loop-border); border-radius: var(--loop-radius-sm); background: var(--loop-soft); }
-.bulk-arrivals-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.attendance-bulk-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+.bulk-arrivals, .bulk-attendance { padding: .85rem; border: 1px solid var(--loop-border); border-radius: var(--loop-radius-sm); background: var(--loop-soft); }
+.bulk-arrivals-heading, .bulk-attendance-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.bulk-attendance-heading p { margin: .2rem 0 0; color: var(--loop-text-muted); font-size: .72rem; line-height: 1.45; }
+.selection-actions { display: flex; flex: none; gap: .25rem; }
 .bulk-arrival-choices { display: flex; flex-wrap: wrap; gap: .25rem 1rem; margin-top: .45rem; }
+.bulk-attendance .form-footer { min-height: 48px; margin-top: .65rem; }
+.bulk-attendance .button { min-height: 48px; }
+.attendance-row-actions { display: flex; min-width: 9rem; align-items: center; justify-content: flex-end; gap: .25rem; }
+.attendance-exceptions { position: relative; }
+.attendance-exceptions summary { display: flex; min-height: 48px; align-items: center; color: var(--loop-primary-strong); font-size: .72rem; font-weight: 700; cursor: pointer; }
+.attendance-exceptions > div { position: absolute; z-index: 2; top: 100%; right: 0; display: flex; border: 1px solid var(--loop-border); border-radius: var(--loop-radius-sm); background: var(--loop-surface); box-shadow: 0 8px 24px rgba(36,50,56,.12); padding: .25rem; }
+.attendance-row { grid-template-columns: 2.4rem minmax(8rem, 1fr) 8rem minmax(9rem, auto); }
 .attendance-mark { display: grid; width: 2rem; height: 2rem; place-items: center; border: 1px solid var(--loop-border-strong); border-radius: 50%; color: var(--loop-text-muted); }
 .attendance-mark.is-present { border-color: var(--loop-primary); background: var(--loop-primary); color: white; }
 .quick-actions { display: flex; gap: .25rem; overflow-x: auto; padding-bottom: .5rem; }
@@ -345,6 +357,8 @@ progress { width: 100%; height: .55rem; border: 0; border-radius: 4px; overflow:
 .tag-children legend { padding: 0 .25rem; font-size: .78rem; font-weight: 700; }
 .tag-children .check-field { display: grid; grid-template-columns: auto 1fr; gap: 0 .55rem; }
 .tag-children .check-field small { grid-column: 2; color: var(--loop-text-muted); font-size: .68rem; font-weight: 500; }
+.tag-selection-actions { display: flex; grid-column: 1 / -1; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--loop-border); margin-bottom: .35rem; padding-bottom: .35rem; color: var(--loop-text-muted); font-size: .72rem; }
+.tag-selection-actions > span:last-child { display: flex; gap: .25rem; }
 .consent-note summary { min-height: 44px; color: var(--loop-text-muted); font-size: .78rem; font-weight: 700; cursor: pointer; }
 .consent-note p { margin: 0; color: var(--loop-text-muted); font-size: .75rem; line-height: 1.6; }
 .upload-progress { display: grid; border-block: 1px solid var(--loop-border); }
@@ -369,6 +383,13 @@ progress { width: 100%; height: .55rem; border: 0; border-radius: 4px; overflow:
 .photo-preview > img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
 .consent-list { display: grid; }
 .consent-row { display: grid; grid-template-columns: minmax(10rem, 1fr) minmax(10rem, .55fr) auto; align-items: center; gap: .75rem; border-bottom: 1px solid var(--loop-border); padding: .55rem 0; }
+.timetable-editors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.attendance-overview { margin-top: 1.25rem; }
+.attendance-overview-list { display: grid; }
+.attendance-overview-row { display: grid; grid-template-columns: minmax(9rem, 1.4fr) repeat(5, minmax(4.5rem, .65fr)) auto; min-height: 58px; align-items: center; gap: .75rem; border-bottom: 1px solid var(--loop-border); font-size: .76rem; }
+.attendance-overview-row span { color: var(--loop-text-muted); }
+.attendance-overview-row b { color: var(--loop-text); font-size: .88rem; }
+.attendance-overview-row small { color: var(--loop-text-muted); text-align: right; }
 .consent-row > span { display: grid; }
 .consent-row small { color: var(--loop-text-muted); font-size: .7rem; }
 .consent-row select { min-height: 48px; border: 1px solid var(--loop-border-strong); border-radius: var(--loop-radius-sm); background: var(--loop-surface); padding: .6rem; }
@@ -446,7 +467,7 @@ progress { width: 100%; height: .55rem; border: 0; border-radius: 4px; overflow:
   .form-grid, .inline-editors, .bulk-default { grid-template-columns: 1fr; }
   .overview-band { display: grid; grid-template-columns: repeat(2, 1fr); }
   .overview-band .stat { min-width: 0; border: 0; border-bottom: 1px solid var(--loop-border); padding: .8rem; }
-  .schedule-row { grid-template-columns: 3.5rem 6.5rem 1fr; gap: .5rem; }
+  .schedule-row { grid-template-columns: .6fr .7fr minmax(0, 2fr); gap: .5rem; }
   .schedule-row small { grid-column: 3; }
   .inline-management { grid-template-columns: 1fr; }
   .staff-assignment-row { grid-template-columns: minmax(0, 1fr); }
@@ -470,18 +491,21 @@ progress { width: 100%; height: .55rem; border: 0; border-radius: 4px; overflow:
   .child-profile-consent { grid-template-columns: 1fr; }
   .feature-entitlement-head { display: none; }
   .feature-entitlement-row { grid-template-columns: 1fr; gap: .4rem; padding: .75rem 0; }
-  .attendance-row { grid-template-columns: 2.4rem minmax(0, 1fr) auto; }
+  .attendance-bulk-grid { grid-template-columns: 1fr; }
+  .attendance-row { grid-template-columns: 2.4rem minmax(0, 1fr) auto; padding: .35rem 0; }
   .attendance-row > span { min-width: 0; overflow-wrap: anywhere; }
   .attendance-row > span:nth-of-type(2) { grid-column: 2; color: var(--loop-text-muted); font-size: .72rem; }
   .attendance-row form { grid-column: 3; grid-row: 1 / span 2; }
+  .attendance-row-actions { min-width: 0; align-items: flex-end; flex-direction: column; }
+  .attendance-exceptions > div { flex-direction: column; }
   .teacher-hero { flex-wrap: wrap; align-items: end; gap: 1rem; }
   .teacher-hero > * { min-width: 0; }
   .present-count strong { font-size: 3.4rem; }
   .now-next { grid-template-columns: 1fr; }
   .now-next > div { grid-template-columns: 1fr; }
   .now-next > div + div { border-top: 1px solid var(--loop-border); border-left: 0; }
-  .bulk-arrivals-heading { flex-wrap: wrap; }
-  .bulk-child { grid-template-columns: minmax(0, 1fr) 8rem; }
+  .bulk-arrivals-heading, .bulk-attendance-heading { flex-wrap: wrap; }
+  .bulk-child { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bulk-child .compact-field:nth-child(3) { grid-column: 2; }
   .sleep-workflow { grid-template-columns: 1fr; }
   .wake-panel { border-top: 1px solid var(--loop-border); border-left: 0; padding-top: 1rem; padding-left: 0; }
@@ -496,8 +520,11 @@ progress { width: 100%; height: .55rem; border: 0; border-radius: 4px; overflow:
   .timeline-item > div { grid-column: 2; grid-row: 1 / span 2; }
   .timeline-item > strong { grid-column: 3; grid-row: 1 / span 2; max-width: 5.5rem; }
   .tag-children, .photo-grid, .updates-grid, .messages-layout { grid-template-columns: 1fr; }
+  .tag-selection-actions { align-items: flex-start; flex-direction: column; }
   .photo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .consent-row { grid-template-columns: 1fr; }
+  .attendance-overview-row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem .75rem; padding: .75rem 0; }
+  .attendance-overview-row strong, .attendance-overview-row small { grid-column: 1 / -1; text-align: left; }
   .thread-list, .message-panel { border-right: 0; border-left: 0; border-radius: 0; margin-inline: -1rem; }
 }
 
