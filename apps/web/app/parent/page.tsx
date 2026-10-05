@@ -8,6 +8,7 @@ import { PrivatePhoto } from "@/components/private-photo";
 import { requireViewer } from "@/lib/auth";
 import { guardianNavigation } from "@/lib/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { nextCalendarDate, zonedDateTime } from "@/lib/timezone";
 
 const statusCopy = { upcoming: "Later", now: "Now", confirmed: "Confirmed", ended_unconfirmed: "Ended — no update yet", absent: "Absent" };
 
@@ -52,13 +53,14 @@ export default async function ParentPage({ searchParams }: { searchParams: Promi
   if (!selectedLink) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={guardianNavigation} contentWidth="standard"><StatusNote tone="warning">No child is linked to this guardian account. Ask the school administrator to review the guardian link.</StatusNote></AppShell>;
   const childId = selectedLink.child_id;
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: viewer.timezone }).format(new Date());
-  const weekday = new Date(`${today}T00:00:00+05:30`).getUTCDay() || 7;
+  const tomorrow = nextCalendarDate(today);
+  const weekday = new Date(`${today}T12:00:00Z`).getUTCDay() || 7;
   const enrollment = selectedLink.children?.child_enrollments.find((item) => item.status === "active");
   if (!enrollment) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={guardianNavigation} contentWidth="standard"><StatusNote tone="warning">This child does not have an active classroom enrollment.</StatusNote></AppShell>;
 
   const [attendance, care, slots, exceptions, photoLinks] = await Promise.all([
     supabase.from("attendance_records").select("id, status, checked_in_at, checked_out_at").eq("child_id", childId).eq("service_date", today).maybeSingle(),
-    supabase.from("care_events").select("id, category, status, recorded_at, started_at, ended_at, outcome_code, meal_outcome, quantity, unit, note, timetable_slot_id").eq("child_id", childId).gte("recorded_at", `${today}T00:00:00+05:30`).lt("recorded_at", `${today}T23:59:59+05:30`).order("recorded_at"),
+    supabase.from("care_events").select("id, category, status, recorded_at, started_at, ended_at, outcome_code, meal_outcome, quantity, unit, note, timetable_slot_id").eq("child_id", childId).gte("recorded_at", zonedDateTime(today, "00:00:00", viewer.timezone)).lt("recorded_at", zonedDateTime(tomorrow, "00:00:00", viewer.timezone)).order("recorded_at"),
     supabase.from("timetable_slots").select("id, title, start_time, end_time, care_feature_key").eq("classroom_id", enrollment.classroom_id).eq("day_of_week", weekday).eq("status", "active").order("start_time"),
     supabase.from("timetable_exceptions").select("timetable_slot_id, kind, replacement_title, replacement_start_time, replacement_end_time").eq("classroom_id", enrollment.classroom_id).eq("service_date", today).eq("status", "active"),
     supabase.from("media_asset_children").select("asset_id, media_assets(id, caption, created_at, status)").eq("child_id", childId).order("created_at", { referencedTable: "media_assets", ascending: false }).limit(12),
@@ -75,7 +77,7 @@ export default async function ParentPage({ searchParams }: { searchParams: Promi
     const endTime = exception?.replacement_end_time ?? slot.end_time;
     return {
       id: slot.id,
-      occurredAt: `${today}T${startTime}+05:30`,
+      occurredAt: zonedDateTime(today, startTime, viewer.timezone),
       kind: "timetable",
       title: exception?.replacement_title ?? slot.title,
       detail: linkedCare ? linkedCare.category === "sleep" && linkedCare.started_at ? (linkedCare.ended_at ? `Nap ended · ${durationCopy(linkedCare.started_at, linkedCare.ended_at)}` : "Nap started") : careDetail(linkedCare) : undefined,
@@ -96,7 +98,7 @@ export default async function ParentPage({ searchParams }: { searchParams: Promi
   const childName = selectedLink.children?.preferred_name ?? "Child";
 
   return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={guardianNavigation} contentWidth="standard">
-    <section className="parent-heading"><div><p className="eyebrow">Child</p><h2>{childName}</h2></div>{(links.data?.length ?? 0) > 1 ? <div className="child-switcher" aria-label="Choose child">{links.data?.map((link) => <Link className={link.child_id === childId ? "selected" : ""} key={link.child_id} href={`/parent?child=${link.child_id}`}>{link.children?.preferred_name ?? "Child"}</Link>)}</div> : null}<time>{new Date(`${today}T12:00:00+05:30`).toLocaleDateString("en-LK", { weekday: "long", day: "numeric", month: "long" })}</time></section>
+    <section className="parent-heading"><div><p className="eyebrow">Child</p><h2>{childName}</h2></div>{(links.data?.length ?? 0) > 1 ? <div className="child-switcher" aria-label="Choose child">{links.data?.map((link) => <Link className={link.child_id === childId ? "selected" : ""} key={link.child_id} href={`/parent?child=${link.child_id}`}>{link.children?.preferred_name ?? "Child"}</Link>)}</div> : null}<time>{new Date(`${today}T12:00:00Z`).toLocaleDateString("en-LK", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" })}</time></section>
     {attendanceStatus === "absent" || attendanceStatus === "excused" ? <StatusNote tone="warning">{childName} is marked {attendanceStatus}. Timetable activities are not shown as completed.</StatusNote> : null}
     {todayPhotos.length ? <section className="today-photos" aria-label={`${childName}'s photos`}><div className="section-heading"><div><p className="eyebrow">Shared privately</p><h2>Photos today</h2></div></div><div className="photo-grid">{todayPhotos.map((link) => <PrivatePhoto assetId={link.asset_id} caption={link.media_assets?.caption ?? null} key={link.asset_id} />)}</div></section> : null}
     <section id="timeline" className={timeline.length ? "timeline" : "timeline timeline-is-empty"} aria-label={`${childName}'s timeline`}>

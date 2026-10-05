@@ -188,6 +188,7 @@ test("guardian reaches mobile Child Today timeline", async ({ page }) => {
   await expect(page).toHaveURL(/\/parent/);
   await expect(page.getByRole("heading", { name: "Maya Senaratne" })).toBeVisible();
   await expect(page.locator("#timeline")).toBeVisible();
+  await expect(page.getByText("Outdoor welcome check", { exact: true })).toBeVisible();
   await expect(page.getByText("Bottle").first()).toBeVisible();
   await expect(page.getByText("Nap ended").first()).toBeVisible();
   await page.screenshot({ path: resolve(process.env.TEMP ?? "/tmp", "loop-step-c2-parent-mobile.png"), fullPage: true });
