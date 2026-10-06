@@ -141,11 +141,13 @@ await insertMissing("classrooms", [
   { id: ids.butterflies, school_id: ids.school, branch_id: ids.branch, name: "Butterflies", status: "active" },
   { id: ids.sunbeams, school_id: ids.school, branch_id: ids.branch, name: "Sunbeams", status: "active" },
 ]);
+const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Colombo" }).format(new Date());
 await insertMissing("classroom_staff_assignments", {
   id: ids.teacherAssignment,
   school_id: ids.school,
   classroom_id: ids.butterflies,
   membership_id: ids.teacherMembership,
+  starts_on: today,
   status: "active",
 });
 
@@ -153,7 +155,6 @@ const childNames = ["Child One", "Child Two", "Child Three"];
 await insertMissing("children", childNames.map((preferred_name, index) => ({
   id: ids.children[index], school_id: ids.school, preferred_name, status: "active",
 })));
-const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Colombo" }).format(new Date());
 await insertMissing("child_enrollments", childNames.map((_, index) => ({
   id: ids.enrollments[index],
   school_id: ids.school,

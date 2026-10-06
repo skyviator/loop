@@ -138,6 +138,7 @@ export async function assignStaffAction(formData: FormData) {
   if (existing.data?.length) throw new Error("This Teacher is already assigned to that classroom.");
   const { error } = await supabase.from("classroom_staff_assignments").insert({
     school_id: viewer.schoolId!, membership_id: membershipId, classroom_id: classroomId,
+    starts_on: localDate(viewer.timezone),
   });
   if (error) throw new Error(error.code === "23505" ? "This classroom already has an assignment for the Teacher on this date. Restore the existing row if needed." : "The Teacher could not be assigned to this classroom.");
   revalidatePath("/school");

@@ -257,7 +257,7 @@ select pg_temp.throws_any($$insert into public.care_events (school_id, child_id,
 select extensions.lives_ok($$update public.care_events set note = 'Updated by assigned teacher' where id = 'a0000000-0000-0000-0000-000000000071'$$, 'teacher A can update assigned care event');
 select pg_temp.throws_any($$delete from public.care_events where id = 'a0000000-0000-0000-0000-000000000071'$$, 'teacher cannot hard-delete care history');
 select pg_temp.throws_any($$update public.school_memberships set role = 'school_admin' where id = 'a0000000-0000-0000-0000-000000000042'$$, 'teacher has no direct membership update privilege');
-select pg_temp.throws_any($$insert into public.classroom_staff_assignments (school_id, classroom_id, membership_id) values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000021', 'a0000000-0000-0000-0000-000000000042')$$, 'teacher cannot self-assign another classroom');
+select pg_temp.throws_any($$insert into public.classroom_staff_assignments (school_id, classroom_id, membership_id, starts_on) values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000021', 'a0000000-0000-0000-0000-000000000042', current_date)$$, 'teacher cannot self-assign another classroom');
 reset role;
 select extensions.is((select role::text from public.school_memberships where id = 'a0000000-0000-0000-0000-000000000042'), 'teacher', 'teacher A did not self-promote');
 
@@ -1287,9 +1287,9 @@ select pg_temp.throws_any(
   'school admin cannot directly move a membership between tenants'
 );
 select extensions.lives_ok(
-  $$insert into public.classroom_staff_assignments (id, school_id, classroom_id, membership_id)
+  $$insert into public.classroom_staff_assignments (id, school_id, classroom_id, membership_id, starts_on)
     values ('a0000000-0000-0000-0000-000000000046', 'a0000000-0000-0000-0000-000000000001',
-      'a0000000-0000-0000-0000-000000000021', 'a0000000-0000-0000-0000-000000000042')$$,
+      'a0000000-0000-0000-0000-000000000021', 'a0000000-0000-0000-0000-000000000042', current_date)$$,
   'an active Teacher can be assigned to a second same-school classroom'
 );
 select extensions.lives_ok(
@@ -1342,9 +1342,9 @@ select pg_temp.throws_any(
   'assignment reactivation requires an active Teacher membership'
 );
 select pg_temp.throws_any(
-  $$insert into public.classroom_staff_assignments (school_id, classroom_id, membership_id, status)
+  $$insert into public.classroom_staff_assignments (school_id, classroom_id, membership_id, status, starts_on)
     values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000021',
-      'a0000000-0000-0000-0000-000000000042', 'inactive')$$,
+      'a0000000-0000-0000-0000-000000000042', 'inactive', current_date)$$,
   'even an initially inactive new assignment requires active Teacher membership'
 );
 select pg_temp.throws_any(
@@ -1358,9 +1358,9 @@ set local role authenticated;
 select extensions.is((select count(*)::integer from public.children), 0, 'inactive teacher membership immediately denies child access');
 select extensions.is((select count(*)::integer from public.classrooms), 0, 'inactive teacher membership immediately denies classroom access');
 select pg_temp.throws_any(
-  $$insert into public.classroom_staff_assignments (school_id, classroom_id, membership_id)
+  $$insert into public.classroom_staff_assignments (school_id, classroom_id, membership_id, starts_on)
     values ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000021',
-      'a0000000-0000-0000-0000-000000000042')$$,
+      'a0000000-0000-0000-0000-000000000042', current_date)$$,
   'an inactive Teacher cannot self-assign'
 );
 reset role;

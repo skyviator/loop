@@ -125,12 +125,13 @@ await result(
   ]),
   "Create classrooms",
 );
+const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Colombo" }).format(new Date());
 await result(
-  admin.from("classroom_staff_assignments").insert({ school_id: schoolId, classroom_id: classroomId, membership_id: teacherMembershipId }),
+  admin.from("classroom_staff_assignments").insert({ school_id: schoolId, classroom_id: classroomId, membership_id: teacherMembershipId, starts_on: today }),
   "Assign teacher to primary classroom",
 );
 await result(
-  admin.from("classroom_staff_assignments").insert({ school_id: schoolId, classroom_id: teacherSecondClassroomId, membership_id: teacherMembershipId }),
+  admin.from("classroom_staff_assignments").insert({ school_id: schoolId, classroom_id: teacherSecondClassroomId, membership_id: teacherMembershipId, starts_on: today }),
   "Assign teacher to second classroom",
 );
 
@@ -219,7 +220,6 @@ await result(admin.from("calendar_events").insert({
   created_by_user_id: byRole.school_admin.id,
 }), "Create calendar event");
 
-const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Colombo" }).format(new Date());
 const weekday = new Date(`${today}T12:00:00Z`).getUTCDay() || 7;
 const todayStart = new Date(`${today}T00:00:00+05:30`).getTime();
 const checkedInAt = new Date(Math.max(todayStart, Date.now() - 5 * 60_000)).toISOString();

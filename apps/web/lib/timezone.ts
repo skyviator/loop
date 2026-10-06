@@ -21,6 +21,15 @@ function timezoneOffset(instant: Date, timezone: string) {
   ) - instant.getTime();
 }
 
+export function schoolLocalDate(instant: Date, timezone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(instant);
+}
+
 export function zonedDateTime(date: string, time: string, timezone: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
   const clock = /^(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,6})?)?$/.exec(time);

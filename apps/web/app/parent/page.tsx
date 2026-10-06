@@ -8,7 +8,7 @@ import { PrivatePhoto } from "@/components/private-photo";
 import { requireViewer } from "@/lib/auth";
 import { guardianNavigation } from "@/lib/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { nextCalendarDate, zonedDateTime } from "@/lib/timezone";
+import { nextCalendarDate, schoolLocalDate, zonedDateTime } from "@/lib/timezone";
 
 const statusCopy = { upcoming: "Later", now: "Now", confirmed: "Confirmed", ended_unconfirmed: "Ended — no update yet", absent: "Absent" };
 
@@ -52,7 +52,7 @@ export default async function ParentPage({ searchParams }: { searchParams: Promi
   const selectedLink = links.data?.find((link) => link.child_id === state.child) ?? links.data?.[0];
   if (!selectedLink) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={guardianNavigation} contentWidth="standard"><StatusNote tone="warning">No child is linked to this guardian account. Ask the school administrator to review the guardian link.</StatusNote></AppShell>;
   const childId = selectedLink.child_id;
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: viewer.timezone }).format(new Date());
+  const today = schoolLocalDate(new Date(), viewer.timezone);
   const tomorrow = nextCalendarDate(today);
   const weekday = new Date(`${today}T12:00:00Z`).getUTCDay() || 7;
   const enrollment = selectedLink.children?.child_enrollments.find((item) => item.status === "active");

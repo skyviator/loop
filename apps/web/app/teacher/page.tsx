@@ -13,6 +13,7 @@ import { requireViewer } from "@/lib/auth";
 import { teacherNavigation } from "@/lib/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { buildEffectiveDailySchedule, photoSelectionVersion } from "@/lib/teacher-day-flow";
+import { schoolLocalDate } from "@/lib/timezone";
 
 const statusLabel = {
   upcoming: "Scheduled",
@@ -27,7 +28,7 @@ export default async function TeacherPage({ searchParams }: { searchParams: Prom
   const state = await searchParams;
   const requestedClassroomId = typeof state.classroom === "string" ? state.classroom : null;
   const supabase = await createClient();
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: viewer.timezone }).format(new Date());
+  const today = schoolLocalDate(new Date(), viewer.timezone);
   const assignments = await supabase
     .from("classroom_staff_assignments")
     .select("classroom_id, created_at, classrooms(id, name, status, branches(status))")

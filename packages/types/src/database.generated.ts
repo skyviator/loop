@@ -676,7 +676,7 @@ export type Database = {
           id?: string
           membership_id: string
           school_id: string
-          starts_on?: string
+          starts_on: string
           status?: Database["public"]["Enums"]["record_status"]
           updated_at?: string
         }

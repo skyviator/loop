@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { nextCalendarDate, zonedDateTime } from "./timezone";
+import { nextCalendarDate, schoolLocalDate, zonedDateTime } from "./timezone";
 
 describe("school timezone helpers", () => {
   it("converts a Colombo wall-clock time without hard-coding its offset", () => {
@@ -14,6 +14,16 @@ describe("school timezone helpers", () => {
   it("uses the configured timezone and observes daylight-saving offsets", () => {
     expect(zonedDateTime("2026-07-15", "09:15:00", "America/New_York")).toBe("2026-07-15T13:15:00.000Z");
     expect(zonedDateTime("2026-12-15", "09:15:00", "America/New_York")).toBe("2026-12-15T14:15:00.000Z");
+  });
+
+  it.each([
+    ["Asia/Colombo", "2026-01-15T18:29:59.000Z", "2026-01-15"],
+    ["Asia/Colombo", "2026-01-15T18:30:00.000Z", "2026-01-16"],
+    ["UTC", "2026-01-16T00:00:00.000Z", "2026-01-16"],
+    ["America/New_York", "2026-01-16T05:00:00.000Z", "2026-01-16"],
+    ["America/New_York", "2026-07-16T04:00:00.000Z", "2026-07-16"],
+  ])("matches the database school-local date boundary for %s at %s", (timezone, instant, expected) => {
+    expect(schoolLocalDate(new Date(instant), timezone)).toBe(expected);
   });
 
   it("advances date-only values across month and year boundaries", () => {
