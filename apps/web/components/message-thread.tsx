@@ -5,11 +5,12 @@ import { useActionState, useEffect, useState } from "react";
 import { sendMessageAction, markThreadReadAction } from "@/app/actions/communication";
 import type { ActionState } from "@/app/actions/core";
 import { createClient } from "@/lib/supabase/client";
+import { schoolDateTimeLabel } from "@/lib/timezone";
 
-type Message = { id: string; body: string; created_at: string; sender_user_id: string; sender_membership_id: string };
+type Message = { id: string; body: string; created_at: string; created_at_label: string; sender_user_id: string; sender_membership_id: string };
 const initialState: ActionState = { status: "idle", message: "" };
 
-export function MessageThread({ threadId, guardianMembershipId, viewerUserId, initialMessages }: { threadId: string; guardianMembershipId: string; viewerUserId: string; initialMessages: Message[] }) {
+export function MessageThread({ threadId, guardianMembershipId, viewerUserId, schoolTimezone, initialMessages }: { threadId: string; guardianMembershipId: string; viewerUserId: string; schoolTimezone: string; initialMessages: Message[] }) {
   const [messages, setMessages] = useState(initialMessages);
   const [state, action, pending] = useActionState(sendMessageAction, initialState);
   const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "ready" | "error">("connecting");
@@ -38,7 +39,10 @@ export function MessageThread({ threadId, guardianMembershipId, viewerUserId, in
           setRealtimeStatus("error");
           return;
         }
-        setMessages([...(result.data ?? [])].reverse());
+        setMessages([...(result.data ?? [])].reverse().map((message) => ({
+          ...message,
+          created_at_label: schoolDateTimeLabel(new Date(message.created_at), schoolTimezone),
+        })));
         void markThreadReadAction(threadId);
       };
       channel = supabase.channel(`message-thread:${threadId}`, { config: { private: true } })
@@ -55,14 +59,14 @@ export function MessageThread({ threadId, guardianMembershipId, viewerUserId, in
       cancelled = true;
       if (channel) void supabase.removeChannel(channel);
     };
-  }, [threadId]);
+  }, [schoolTimezone, threadId]);
 
   return <div className="message-workspace">
     <div className="message-list" aria-live="polite">
       {messages.map((message) => <article className={message.sender_user_id === viewerUserId ? "message message-own" : "message"} key={message.id}>
         <span>{message.sender_membership_id === guardianMembershipId ? "Family" : "School"}</span>
         <p>{message.body}</p>
-        <time>{new Date(message.created_at).toLocaleString("en-LK", { dateStyle: "medium", timeStyle: "short" })}</time>
+        <time dateTime={message.created_at}>{message.created_at_label}</time>
       </article>)}
       {!messages.length ? <p className="empty-inline">No messages yet. This conversation is private to this guardian and the child’s assigned school staff.</p> : null}
     </div>

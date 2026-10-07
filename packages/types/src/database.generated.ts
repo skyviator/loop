@@ -1846,6 +1846,18 @@ export type Database = {
           status: Database["public"]["Enums"]["invitation_status"]
         }[]
       }
+      list_accessible_message_thread_summaries: {
+        Args: never
+        Returns: {
+          child_id: string
+          child_name: string
+          guardian_membership_id: string
+          guardian_name: string
+          id: string
+          relationship_label: string
+          updated_at: string
+        }[]
+      }
       move_child_enrollment: {
         Args: {
           move_date: string

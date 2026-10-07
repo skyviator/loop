@@ -18,6 +18,7 @@ describe("push delivery policy", () => {
   it("builds a deliberately minimal lock-screen payload", () => {
     const payload = notificationPayload({ deliveryId: "delivery", eventType: "message", title: "New Loop message", body: "Open Loop to read your new message.", route: "/messages?thread=id" });
     expect(payload).toEqual({ title: "New Loop message", body: "Open Loop to read your new message.", route: "/messages?thread=id", tag: "message:delivery", badgeCount: 1 });
+    expect(JSON.stringify(payload)).not.toMatch(/child|medical|toilet|nappy|private note|https:\/\/.*media|token/i);
     expect(payload).not.toHaveProperty("endpoint");
     expect(payload).not.toHaveProperty("messageBody");
     expect(payload).not.toHaveProperty("signedUrl");

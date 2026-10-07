@@ -46,7 +46,7 @@ async function signIn(page: Page, role: string) {
   await page.getByLabel("Password").fill(current.password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForLoadState("networkidle");
-  await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible({ timeout: 15_000 });
 }
 
 async function signedInPage(browser: Browser, role: string) {
@@ -84,7 +84,7 @@ test.beforeAll(async () => {
   if (branch.error) throw new Error(`Find local branch: ${branch.error.message}`);
 
   try {
-    await requireSuccess(await admin.from("classrooms").insert({ id: emptyClassroomId, school_id: emptySchoolId, branch_id: branch.data.id, name: "Empty State Classroom" }), "Create empty-state classroom");
+    await requireSuccess(await admin.from("classrooms").insert({ id: emptyClassroomId, school_id: emptySchoolId, branch_id: branch.data.id, name: `Empty State Classroom ${emptyClassroomId.slice(0, 8)}` }), "Create empty-state classroom");
     await requireSuccess(await admin.from("children").insert({ id: emptyChildId, school_id: emptySchoolId, preferred_name: emptyChildName }), "Create empty-state child");
     await requireSuccess(await admin.from("child_enrollments").insert({ school_id: emptySchoolId, child_id: emptyChildId, classroom_id: emptyClassroomId, starts_on: new Date().toISOString().slice(0, 10), status: "active" }), "Enroll empty-state child");
     await requireSuccess(await admin.from("child_guardians").insert({ school_id: emptySchoolId, child_id: emptyChildId, guardian_membership_id: membership.data.id, relationship_label: "Parent" }), "Link empty-state guardian");
@@ -125,8 +125,71 @@ test("Guardian navigation is consistent and message deep links remain valid", as
 
   await page.goto("/messages?thread=notification-deep-link-check");
   await expect(page).toHaveURL(/\/messages\?thread=notification-deep-link-check$/);
-  await expect(page.getByRole("heading", { name: "Messages" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Primary" }).locator('[aria-current="page"]')).toHaveText("Messages");
+  await expect(page.getByText("This page could not be found.")).toBeVisible();
+
+  await page.goto(`/parent?child=${randomUUID()}`);
+  await expect(page.getByText("This page could not be found.")).toBeVisible();
+});
+
+test("Teacher messaging shows authorized guardian identity without hydration mismatch", async ({ page }) => {
+  const hydrationErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && /hydration|server rendered html|did not match/i.test(message.text())) hydrationErrors.push(message.text());
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page, "teacher");
+  await page.goto("/messages");
+  await expect(page.getByText("Ruwan Silva · Parent", { exact: true }).first()).toBeVisible();
+  await expect(page.locator(".message time").first()).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(hydrationErrors).toEqual([]);
+  await expectNoHorizontalOverflow(page);
+});
+
+test("Teacher can distinguish two guardians linked to the same child", async ({ page }) => {
+  const guardianAccount = account("guardian");
+  const users = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const guardianUser = users.data.users.find((user) => user.email === guardianAccount.email);
+  if (!guardianUser) throw new Error("Local guardian user was not found.");
+  const guardianMembership = await admin.from("school_memberships").select("id").eq("user_id", guardianUser.id).eq("role", "guardian").single();
+  if (guardianMembership.error) throw guardianMembership.error;
+  const originalThread = await admin.from("message_threads").select("child_id, school_id").eq("guardian_membership_id", guardianMembership.data.id).eq("status", "active").limit(1).single();
+  if (originalThread.error) throw originalThread.error;
+  const child = await admin.from("children").select("preferred_name").eq("id", originalThread.data.child_id).single();
+  if (child.error) throw child.error;
+
+  const secondEmail = `message.guardian.${randomUUID()}@loop.local`;
+  const secondUser = await admin.auth.admin.createUser({
+    email: secondEmail,
+    password: `Loop-message-${Date.now()}!`,
+    email_confirm: true,
+    user_metadata: { full_name: "Nadeesha Silva" },
+  });
+  if (secondUser.error) throw secondUser.error;
+  let secondMembershipId = "";
+  try {
+    const membership = await admin.from("school_memberships").insert({ school_id: originalThread.data.school_id, user_id: secondUser.data.user.id, role: "guardian" }).select("id").single();
+    if (membership.error) throw membership.error;
+    secondMembershipId = membership.data.id;
+    await requireSuccess(await admin.from("child_guardians").insert({ school_id: originalThread.data.school_id, child_id: originalThread.data.child_id, guardian_membership_id: secondMembershipId, relationship_label: "Aunt" }), "Link second guardian");
+    await requireSuccess(await admin.from("message_threads").insert({ school_id: originalThread.data.school_id, child_id: originalThread.data.child_id, guardian_membership_id: secondMembershipId }), "Create second guardian thread");
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await signIn(page, "teacher");
+    await page.goto("/messages");
+    const childThreads = page.locator(".thread-row").filter({ has: page.getByText(child.data.preferred_name, { exact: true }) });
+    await expect(childThreads).toHaveCount(2);
+    await expect(childThreads.getByText("Ruwan Silva · Parent", { exact: true })).toBeVisible();
+    await expect(childThreads.getByText("Nadeesha Silva · Aunt", { exact: true })).toBeVisible();
+  } finally {
+    if (secondMembershipId) {
+      await admin.from("message_threads").delete().eq("guardian_membership_id", secondMembershipId);
+      await admin.from("child_guardians").delete().eq("guardian_membership_id", secondMembershipId);
+      await admin.from("school_memberships").delete().eq("id", secondMembershipId);
+    }
+    await admin.auth.admin.deleteUser(secondUser.data.user.id);
+  }
 });
 
 test("Authenticated navigation gives immediate feedback while private data remains uncached", async ({ page }) => {

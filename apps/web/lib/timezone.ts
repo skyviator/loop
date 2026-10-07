@@ -30,6 +30,24 @@ export function schoolLocalDate(instant: Date, timezone: string) {
   }).format(instant);
 }
 
+const shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+export function schoolDateTimeLabel(instant: Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(instant);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  const month = shortMonths[Number(part("month")) - 1];
+  if (!month) throw new Error("The message timestamp is invalid.");
+  return `${Number(part("day"))} ${month} ${part("year")}, ${part("hour")}:${part("minute")}`;
+}
+
 export function zonedDateTime(date: string, time: string, timezone: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
   const clock = /^(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,6})?)?$/.exec(time);

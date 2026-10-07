@@ -460,6 +460,10 @@ select extensions.lives_ok(
   'guardian can register the current device without supplying a user id'
 );
 select extensions.lives_ok(
+  $$select public.register_push_subscription('https://push.example/guardian-a', repeat('k', 32), repeat('l', 16))$$,
+  're-registering the same device refreshes its capabilities without creating a duplicate'
+);
+select extensions.lives_ok(
   $$select public.register_push_subscription('https://push.example/guardian-a-spare', repeat('i', 32), repeat('j', 16))$$,
   'guardian can register multiple devices'
 );
@@ -478,11 +482,22 @@ select pg_temp.throws_any(
   $$select public.register_push_subscription('https://push.example/guardian-a', repeat('t', 32), repeat('u', 16))$$,
   'another authenticated identity cannot take over an active device endpoint'
 );
+select extensions.is(
+  public.deactivate_push_subscription('https://push.example/guardian-a'),
+  false,
+  'another authenticated identity cannot deactivate a guardian device endpoint'
+);
 select extensions.lives_ok(
   $$select public.register_push_subscription('https://push.example/teacher-a', repeat('t', 32), repeat('u', 16))$$,
   'teacher can register their own device'
 );
 reset role;
+
+select extensions.is(
+  (select count(*)::integer from private.push_subscriptions where endpoint = 'https://push.example/guardian-a'),
+  1,
+  'repeated registration leaves exactly one private subscription for the endpoint'
+);
 
 select set_config('request.jwt.claim.sub', '90000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
@@ -521,6 +536,16 @@ select extensions.is(
   false,
   'optional photo delivery is disabled by default'
 );
+update public.notification_preferences set attendance_enabled = false where user_id = '10000000-0000-0000-0000-000000000003';
+select extensions.is(
+  private.user_can_receive_push_event(
+    '10000000-0000-0000-0000-000000000003',
+    (select id from private.notification_outbox where event_type = 'attendance_check_in' and school_id = 'a0000000-0000-0000-0000-000000000001')
+  ),
+  false,
+  'guardian attendance preference is enforced before delivery claim'
+);
+update public.notification_preferences set attendance_enabled = true where user_id = '10000000-0000-0000-0000-000000000003';
 update public.notification_preferences set photos_enabled = true where user_id = '10000000-0000-0000-0000-000000000003';
 select extensions.ok(
   private.user_can_receive_push_event(
@@ -546,6 +571,14 @@ select extensions.ok(
   private.user_can_receive_push_event('10000000-0000-0000-0000-000000000002', (select id from private.notification_outbox where source_id = 'a0000000-0000-0000-0000-000000000122')),
   'currently assigned teacher is a database-derived message recipient'
 );
+insert into public.notification_preferences (user_id, messages_enabled)
+values ('10000000-0000-0000-0000-000000000002', false);
+select extensions.is(
+  private.user_can_receive_push_event('10000000-0000-0000-0000-000000000002', (select id from private.notification_outbox where source_id = 'a0000000-0000-0000-0000-000000000122')),
+  false,
+  'teacher message preference is enforced before delivery claim'
+);
+update public.notification_preferences set messages_enabled = true where user_id = '10000000-0000-0000-0000-000000000002';
 update public.classroom_staff_assignments set status = 'inactive', ends_on = current_date where id = 'a0000000-0000-0000-0000-000000000045';
 select extensions.is(
   private.user_can_receive_push_event('10000000-0000-0000-0000-000000000002', (select id from private.notification_outbox where source_id = 'a0000000-0000-0000-0000-000000000122')),
@@ -554,6 +587,58 @@ select extensions.is(
 );
 update public.classroom_staff_assignments set status = 'active', ends_on = null where id = 'a0000000-0000-0000-0000-000000000045';
 delete from public.messages where id = 'a0000000-0000-0000-0000-000000000122';
+
+insert into public.announcements (
+  id, school_id, target_scope, classroom_id, title, body, priority, status,
+  publish_at, created_by_membership_id, created_by_user_id
+) values (
+  'a0000000-0000-0000-0000-000000000131',
+  'a0000000-0000-0000-0000-000000000001',
+  'classroom',
+  'a0000000-0000-0000-0000-000000000020',
+  'Private classroom detail',
+  'Sensitive announcement body',
+  'important',
+  'published',
+  now() - interval '1 minute',
+  'a0000000-0000-0000-0000-000000000041',
+  '10000000-0000-0000-0000-000000000001'
+);
+select extensions.ok(
+  private.user_can_receive_push_event(
+    '10000000-0000-0000-0000-000000000003',
+    (select id from private.notification_outbox where event_type = 'important_announcement' and source_id = 'a0000000-0000-0000-0000-000000000131')
+  ),
+  'linked guardian can receive an important announcement for the enrolled classroom'
+);
+select extensions.is(
+  private.user_can_receive_push_event(
+    '20000000-0000-0000-0000-000000000003',
+    (select id from private.notification_outbox where event_type = 'important_announcement' and source_id = 'a0000000-0000-0000-0000-000000000131')
+  ),
+  false,
+  'cross-tenant guardian cannot receive another school announcement'
+);
+update public.notification_preferences set important_announcements_enabled = false where user_id = '10000000-0000-0000-0000-000000000003';
+select extensions.is(
+  private.user_can_receive_push_event(
+    '10000000-0000-0000-0000-000000000003',
+    (select id from private.notification_outbox where event_type = 'important_announcement' and source_id = 'a0000000-0000-0000-0000-000000000131')
+  ),
+  false,
+  'guardian important-announcement preference is enforced before delivery claim'
+);
+update public.notification_preferences set important_announcements_enabled = true where user_id = '10000000-0000-0000-0000-000000000003';
+select extensions.is(
+  (select count(*)::integer from private.notification_outbox
+    where body ilike '%Sensitive announcement body%'
+      or body ilike '%School A message%'
+      or body ilike '%Child A%'
+      or body ilike '%ate_most%'),
+  0,
+  'notification payload copy excludes message, child, care, and announcement content'
+);
+delete from public.announcements where id = 'a0000000-0000-0000-0000-000000000131';
 
 set local role service_role;
 select extensions.ok(
@@ -823,6 +908,7 @@ select set_config('request.jwt.claim.role', 'anon', true);
 select pg_temp.throws_any('select * from public.media_assets', 'anonymous cannot inspect private media metadata');
 select pg_temp.throws_any('select * from public.messages', 'anonymous cannot inspect private messages');
 select pg_temp.throws_any('select * from public.announcements', 'anonymous cannot inspect school announcements');
+select pg_temp.throws_any('select * from public.list_accessible_message_thread_summaries()', 'anonymous cannot inspect message thread identity summaries');
 reset role;
 
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
@@ -831,6 +917,9 @@ select extensions.is((select count(*)::integer from public.media_assets), 1, 'as
 select extensions.is((select count(*)::integer from public.messages), 1, 'assigned teacher sees only the assigned child thread');
 select extensions.is((select count(*)::integer from public.announcements), 1, 'assigned teacher sees only the relevant announcement');
 select extensions.is((select count(*)::integer from public.calendar_events), 1, 'assigned teacher sees only the relevant calendar');
+select extensions.is((select count(*)::integer from public.list_accessible_message_thread_summaries()), 1, 'assigned teacher sees one authorized guardian identity summary');
+select extensions.is((select guardian_name from public.list_accessible_message_thread_summaries()), 'Guardian A', 'assigned teacher sees the authorized guardian name');
+select extensions.is((select relationship_label from public.list_accessible_message_thread_summaries()), 'Parent', 'assigned teacher sees the authorized guardian relationship');
 select extensions.lives_ok(
   $$insert into public.messages (thread_id, school_id, sender_membership_id, sender_user_id, body)
     values ('a0000000-0000-0000-0000-000000000120', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000042', '10000000-0000-0000-0000-000000000002', 'Teacher reply')$$,
@@ -847,6 +936,7 @@ select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000004
 set local role authenticated;
 select extensions.is((select count(*)::integer from public.media_assets), 0, 'unassigned teacher sees no child media');
 select extensions.is((select count(*)::integer from public.message_threads), 0, 'unassigned teacher sees no guardian threads');
+select extensions.is((select count(*)::integer from public.list_accessible_message_thread_summaries()), 0, 'unassigned teacher sees no guardian identity summaries');
 reset role;
 
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
@@ -855,6 +945,8 @@ select extensions.is((select count(*)::integer from public.media_assets), 1, 'gu
 select extensions.is((select count(*)::integer from public.message_threads), 1, 'guardian sees only their own linked-child thread');
 select extensions.is((select count(*)::integer from public.announcements), 1, 'guardian sees the relevant classroom announcement only');
 select extensions.is((select count(*)::integer from public.calendar_events), 1, 'guardian sees the relevant school calendar only');
+select extensions.is((select count(*)::integer from public.list_accessible_message_thread_summaries()), 1, 'guardian sees only their own message thread summary');
+select extensions.is((select guardian_name from public.list_accessible_message_thread_summaries()), 'Guardian A', 'guardian summary cannot disclose another guardian identity');
 select extensions.lives_ok(
   $$insert into public.messages (thread_id, school_id, sender_membership_id, sender_user_id, body)
     values ('a0000000-0000-0000-0000-000000000120', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000043', '10000000-0000-0000-0000-000000000003', 'Guardian reply')$$,
@@ -866,6 +958,7 @@ select set_config('request.jwt.claim.sub', '90000000-0000-0000-0000-000000000001
 set local role authenticated;
 select extensions.is((select count(*)::integer from public.media_assets), 0, 'platform admin has no child-media bypass');
 select extensions.is((select count(*)::integer from public.messages), 0, 'platform admin has no message bypass');
+select extensions.is((select count(*)::integer from public.list_accessible_message_thread_summaries()), 0, 'platform admin has no guardian identity bypass');
 reset role;
 
 select extensions.is(

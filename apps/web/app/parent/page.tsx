@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 
 import { deriveTimetableStatus, mergeTimeline, type TimelineItem } from "@loop/domain";
 
@@ -49,7 +50,9 @@ export default async function ParentPage({ searchParams }: { searchParams: Promi
   const state = await searchParams;
   const supabase = await createClient();
   const links = await supabase.from("child_guardians").select("child_id, is_primary, children(id, preferred_name, child_enrollments(id, classroom_id, status))").eq("guardian_membership_id", viewer.membershipId!).eq("status", "active").order("is_primary", { ascending: false }).order("created_at");
-  const selectedLink = links.data?.find((link) => link.child_id === state.child) ?? links.data?.[0];
+  const requestedChildId = typeof state.child === "string" ? state.child : null;
+  const selectedLink = requestedChildId ? links.data?.find((link) => link.child_id === requestedChildId) : links.data?.[0];
+  if (requestedChildId && !selectedLink) notFound();
   if (!selectedLink) return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={guardianNavigation} contentWidth="standard"><StatusNote tone="warning">No child is linked to this guardian account. Ask the school administrator to review the guardian link.</StatusNote></AppShell>;
   const childId = selectedLink.child_id;
   const today = schoolLocalDate(new Date(), viewer.timezone);
@@ -100,7 +103,7 @@ export default async function ParentPage({ searchParams }: { searchParams: Promi
   return <AppShell eyebrow={viewer.schoolName ?? "School"} title="Today" nav={guardianNavigation} contentWidth="standard">
     <section className="parent-heading"><div><p className="eyebrow">Child</p><h2>{childName}</h2></div>{(links.data?.length ?? 0) > 1 ? <div className="child-switcher" aria-label="Choose child">{links.data?.map((link) => <Link className={link.child_id === childId ? "selected" : ""} key={link.child_id} href={`/parent?child=${link.child_id}`}>{link.children?.preferred_name ?? "Child"}</Link>)}</div> : null}<time>{new Date(`${today}T12:00:00Z`).toLocaleDateString("en-LK", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" })}</time></section>
     {attendanceStatus === "absent" || attendanceStatus === "excused" ? <StatusNote tone="warning">{childName} is marked {attendanceStatus}. Timetable activities are not shown as completed.</StatusNote> : null}
-    {todayPhotos.length ? <section className="today-photos" aria-label={`${childName}'s photos`}><div className="section-heading"><div><p className="eyebrow">Shared privately</p><h2>Photos today</h2></div></div><div className="photo-grid">{todayPhotos.map((link) => <PrivatePhoto assetId={link.asset_id} caption={link.media_assets?.caption ?? null} key={link.asset_id} />)}</div></section> : null}
+    {todayPhotos.length ? <section id="photos" className="today-photos" aria-label={`${childName}'s photos`}><div className="section-heading"><div><p className="eyebrow">Shared privately</p><h2>Photos today</h2></div></div><div className="photo-grid">{todayPhotos.map((link) => <PrivatePhoto assetId={link.asset_id} caption={link.media_assets?.caption ?? null} key={link.asset_id} />)}</div></section> : null}
     <section id="timeline" className={timeline.length ? "timeline" : "timeline timeline-is-empty"} aria-label={`${childName}'s timeline`}>
       {timeline.map((item) => <article className={`timeline-item timeline-${item.status ?? "confirmed"}`} key={`${item.kind}-${item.id}`}><time>{new Date(item.occurredAt).toLocaleTimeString("en-LK", { hour: "numeric", minute: "2-digit", timeZone: viewer.timezone })}</time><span className="timeline-dot"><LoopIcon name={item.kind === "attendance" ? "attendance" : item.kind === "care" ? "note" : "clock"} className="size-5" /></span><div><h3>{item.title}</h3>{item.detail ? <p>{item.detail}</p> : null}</div><strong>{item.status ? statusCopy[item.status] : "Recorded"}</strong></article>)}
       {!timeline.length ? <div className="timeline-empty"><LoopIcon name="calendar" className="size-8" /><h2>No updates yet</h2><p>Today’s attendance, timetable, and care updates will appear here.</p></div> : null}

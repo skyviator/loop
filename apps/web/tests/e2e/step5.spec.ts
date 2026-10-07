@@ -14,6 +14,7 @@ async function signIn(page: Page, role: string) {
   await page.getByLabel("Password").fill(account.password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForLoadState("networkidle");
+  await expect(page).toHaveURL(role === "super_admin" ? /\/platform/ : role === "guardian" ? /\/parent/ : /\/teacher/, { timeout: 15_000 });
 }
 
 async function signedInPage(browser: Browser, role: string, viewport: { width: number; height: number }) {

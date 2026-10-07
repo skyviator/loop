@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { nextCalendarDate, schoolLocalDate, zonedDateTime } from "./timezone";
+import { nextCalendarDate, schoolDateTimeLabel, schoolLocalDate, zonedDateTime } from "./timezone";
 
 describe("school timezone helpers", () => {
   it("converts a Colombo wall-clock time without hard-coding its offset", () => {
@@ -28,5 +28,11 @@ describe("school timezone helpers", () => {
 
   it("advances date-only values across month and year boundaries", () => {
     expect(nextCalendarDate("2026-12-31")).toBe("2027-01-01");
+  });
+
+  it("formats a deterministic school-local message timestamp", () => {
+    const instant = new Date("2026-01-15T18:45:00.000Z");
+    expect(schoolDateTimeLabel(instant, "Asia/Colombo")).toBe("16 Jan 2026, 00:15");
+    expect(schoolDateTimeLabel(instant, "America/New_York")).toBe("15 Jan 2026, 13:45");
   });
 });
