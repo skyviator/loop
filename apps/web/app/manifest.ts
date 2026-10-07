@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Loop",
     short_name: "Loop",
     description: "Brighter days together.",
-    start_url: "/",
+    start_url: "/app",
     scope: "/",
     display: "standalone",
     background_color: "#F7F6F2",
