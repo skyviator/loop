@@ -30,7 +30,7 @@ test("Step 5 PWA settings, private device registration, and push trigger", async
   const teacher = await signedInPage(browser, "teacher", { width: 1440, height: 900 });
   try {
     await guardian.page.goto("/settings");
-    await expect(guardian.page.getByRole("heading", { name: "Keep Loop close" })).toBeVisible();
+    await expect(guardian.page.getByRole("heading", { name: "Add Loop to your Home Screen" })).toBeVisible();
     await expect(guardian.page.getByRole("heading", { name: "Push notifications" })).toBeVisible();
     await expect(guardian.page.getByLabel("New private photos")).not.toBeChecked();
     expect(await guardian.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

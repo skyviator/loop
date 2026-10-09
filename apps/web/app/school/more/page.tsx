@@ -6,10 +6,10 @@ import { requireViewer } from "@/lib/auth";
 import { schoolAdminMoreNavigation, schoolAdminNavigation } from "@/lib/navigation";
 
 const descriptions: Record<string, string> = {
-  "/school#classrooms": "Manage branches and classroom structure.",
-  "/school#timetable": "Review the school timetable.",
-  "/school#features": "Configure available school features.",
-  "/school#settings": "Update school details and preferences.",
+  "/school/classrooms": "Manage branches and classroom structure.",
+  "/school/timetable": "Review the school timetable.",
+  "/school/features": "Configure available school features.",
+  "/school/settings": "Update school details and preferences.",
   "/settings": "Manage your notifications and account settings.",
 };
 

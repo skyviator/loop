@@ -1,12 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useFormStatus } from "react-dom";
 
 import { saveNotificationPreferencesAction } from "@/app/actions/notifications";
 import { LoopIcon } from "@/components/loop-icon";
 import { usePwa } from "@/components/pwa-provider";
 
 type PermissionState = NotificationPermission | "unsupported";
+
+function PreferenceSave({ saved }: { saved: boolean }) {
+  const { pending } = useFormStatus();
+  return <div className="preference-save-row"><button className="button button-secondary" disabled={pending}>{pending ? "Saving…" : "Save preferences"}</button>{saved && !pending ? <span className="form-result" role="status" aria-live="polite">Preferences saved</span> : null}</div>;
+}
 
 function decodeVapidKey(value: string) {
   const padding = "=".repeat((4 - value.length % 4) % 4);
@@ -28,6 +34,7 @@ export function InstallPushSettings({
   const [subscribed, setSubscribed] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [preferencesSaved, setPreferencesSaved] = useState(false);
 
   useEffect(() => {
     if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
@@ -107,8 +114,8 @@ export function InstallPushSettings({
   return (
     <div className="settings-stack">
       <section className="section-panel settings-panel">
-        <div className="section-heading"><div><p className="eyebrow">Installed app</p><h2>Keep Loop close</h2></div><LoopIcon name="phone" className="size-6" /></div>
-        {isStandalone ? <p className="muted">Loop is open as an installed app on this device.</p> : installAvailable ? <><p className="muted">Install Loop for a focused app window and easier access.</p><button className="button button-primary" type="button" onClick={() => void install()}>Install Loop</button></> : isIos ? <div className="instruction-list"><p><LoopIcon name="share" className="size-5" /><span>In Safari, tap Share.</span></p><p><LoopIcon name="add" className="size-5" /><span>Choose Add to Home Screen, then open Loop from its icon.</span></p></div> : <p className="muted">Use your browser menu to install Loop when installation is available.</p>}
+        <div className="section-heading"><div><p className="eyebrow">Loop app</p><h2>{isStandalone ? "Loop is installed" : "Add Loop to your Home Screen"}</h2></div><LoopIcon name="phone" className="size-6" /></div>
+        {isStandalone ? <p className="muted">Open Loop anytime from your Home Screen.</p> : installAvailable ? <><p className="muted">Install Loop for a focused app window and easier access.</p><button className="button button-primary" type="button" onClick={() => void install()}>Install Loop</button></> : isIos ? <div className="instruction-list"><p><LoopIcon name="share" className="size-5" /><span>In Safari, tap Share.</span></p><p><LoopIcon name="add" className="size-5" /><span>Choose Add to Home Screen, then open Loop from its icon.</span></p></div> : <p className="muted">Use your browser menu to install Loop when installation is available.</p>}
       </section>
 
       <section className="section-panel settings-panel">
@@ -121,13 +128,13 @@ export function InstallPushSettings({
 
       <section className="section-panel settings-panel">
         <div className="section-heading"><div><p className="eyebrow">What reaches you</p><h2>Notification preferences</h2></div></div>
-        <form action={saveNotificationPreferencesAction} className="form-stack notification-preferences">
+        <form action={async (formData) => { setPreferencesSaved(false); await saveNotificationPreferencesAction(formData); setPreferencesSaved(true); }} onChange={() => setPreferencesSaved(false)} className="form-stack notification-preferences">
           {role === "guardian" ? <label className="check-field"><input type="checkbox" name="attendance_enabled" defaultChecked={preferences.attendance} /> Attendance check-in and check-out</label> : null}
           <label className="check-field"><input type="checkbox" name="messages_enabled" defaultChecked={preferences.messages} /> New direct messages</label>
           <label className="check-field"><input type="checkbox" name="important_announcements_enabled" defaultChecked={preferences.announcements} /> Important announcements</label>
           {role === "guardian" ? <label className="check-field"><input type="checkbox" name="photos_enabled" defaultChecked={preferences.photos} /> New private photos <small>Optional and off by default</small></label> : null}
           <p className="muted">Routine care and timetable activity never create push notifications.</p>
-          <button className="button button-secondary">Save preferences</button>
+          <PreferenceSave saved={preferencesSaved} />
         </form>
       </section>
     </div>

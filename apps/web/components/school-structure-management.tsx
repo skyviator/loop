@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 import { createBranchAction, createClassroomAction, updateBranchAction, updateClassroomAction } from "@/app/actions/core";
 
 import { StructureStatusAction } from "./structure-status-action";
@@ -27,6 +31,7 @@ export function SchoolStructureManagement({ branches, classrooms, assignments, e
   enrollments: Enrollment[];
   today: string;
 }) {
+  const [openEditor, setOpenEditor] = useState<string | null>(null);
   const activeBranches = branches.filter((branch) => branch.status === "active");
   const branchById = new Map(branches.map((branch) => [branch.id, branch]));
   const classroomCounts = new Map<string, { active: number; total: number }>();
@@ -63,8 +68,8 @@ export function SchoolStructureManagement({ branches, classrooms, assignments, e
                 <span className="structure-status" data-status={branch.status}>{statusLabel(branch.status)}</span>
               </div>
               <div className="structure-item-actions">
-                <details className="structure-editor"><summary>Edit branch</summary>
-                  <form action={updateBranchAction} className="form-stack">
+                <details className="structure-editor" open={openEditor === `branch:${branch.id}`} onToggle={(event) => { const details = event.currentTarget; if (details.open) setOpenEditor(`branch:${branch.id}`); else if (openEditor === `branch:${branch.id}`) setOpenEditor(null); }}><summary>Edit branch</summary>
+                  <form action={async (formData) => { await updateBranchAction(formData); setOpenEditor(null); }} className="form-stack">
                     <input type="hidden" name="branch_id" value={branch.id} />
                     <input type="hidden" name="status" value={branch.status} />
                     <label className="field"><span>Branch name</span><input name="name" defaultValue={branch.name} required maxLength={120} /></label>
@@ -98,8 +103,8 @@ export function SchoolStructureManagement({ branches, classrooms, assignments, e
               </div>
               <p className="structure-context">{countLabel(teacherCounts.get(classroom.id) ?? 0, "active teacher")} · {countLabel(childCounts.get(classroom.id) ?? 0, "current child", "current children")}</p>
               <div className="structure-item-actions">
-                <details className="structure-editor"><summary>Edit classroom</summary>
-                  <form action={updateClassroomAction} className="form-stack">
+                <details className="structure-editor" open={openEditor === `classroom:${classroom.id}`} onToggle={(event) => { const details = event.currentTarget; if (details.open) setOpenEditor(`classroom:${classroom.id}`); else if (openEditor === `classroom:${classroom.id}`) setOpenEditor(null); }}><summary>Edit classroom</summary>
+                  <form action={async (formData) => { await updateClassroomAction(formData); setOpenEditor(null); }} className="form-stack">
                     <input type="hidden" name="classroom_id" value={classroom.id} />
                     <input type="hidden" name="status" value={classroom.status} />
                     <label className="field"><span>Classroom name</span><input name="name" defaultValue={classroom.name} required maxLength={120} /></label>

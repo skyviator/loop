@@ -28,7 +28,7 @@ export const teacherNavigation: readonly NavItem[] = [
 ];
 
 const schoolOverview: NavItem = { href: "/school", label: "Overview", icon: "home" };
-const schoolPeople: NavItem = { href: "/school#people", label: "People", icon: "people" };
+const schoolPeople: NavItem = { href: "/school/people", label: "People", icon: "people" };
 const schoolMessages: NavItem = { href: "/messages", label: "Messages", icon: "message" };
 const schoolUpdates: NavItem = { href: "/updates", label: "Updates", icon: "announcement" };
 const schoolMore: NavItem = {
@@ -40,10 +40,10 @@ const schoolMore: NavItem = {
 };
 
 export const schoolAdminMoreNavigation: readonly NavItem[] = [
-  { href: "/school#classrooms", label: "Classrooms", icon: "building", mobileHidden: true },
-  { href: "/school#timetable", label: "Timetable", icon: "calendar", mobileHidden: true },
-  { href: "/school#features", label: "Features", icon: "settings", mobileHidden: true },
-  { href: "/school#settings", label: "School", icon: "settings", mobileHidden: true },
+  { href: "/school/classrooms", label: "Classrooms", icon: "building", mobileHidden: true },
+  { href: "/school/timetable", label: "Timetable", icon: "calendar", mobileHidden: true },
+  { href: "/school/features", label: "Features", icon: "settings", mobileHidden: true },
+  { href: "/school/settings", label: "School", icon: "settings", mobileHidden: true },
   { href: "/settings", label: "My settings", icon: "bell", mobileHidden: true },
 ];
 
@@ -57,19 +57,10 @@ export const schoolAdminNavigation: readonly NavItem[] = [
   schoolMore,
 ];
 
-const schoolAdminCommunicationNavigation: readonly NavItem[] = [
-  schoolOverview,
-  { ...schoolPeople, mobileOnly: true },
-  schoolMessages,
-  schoolUpdates,
-  { href: "/settings", label: "Settings", icon: "settings", mobileHidden: true },
-  schoolMore,
-];
-
 export function communicationNavigation(role: AppRole): readonly NavItem[] {
   if (role === "guardian") return guardianNavigation;
   if (role === "teacher") return teacherNavigation;
-  return schoolAdminCommunicationNavigation;
+  return schoolAdminNavigation;
 }
 
 export function isNavigationItemActive(href: string, items: readonly NavItem[], pathname: string, hash: string) {

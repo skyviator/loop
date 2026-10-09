@@ -92,7 +92,7 @@ function StaffRow({ staff, assignments, classrooms, today }: { staff: Staff; ass
         <h3>Classroom assignments</h3>
         {assignments.length ? <div className="staff-assignment-list">{assignments.map((assignment) => {
           const room = classroomById.get(assignment.classroom_id);
-          return <div className="staff-assignment-row" key={assignment.id}>
+          return <div className="staff-assignment-row" key={`${assignment.id}:${assignment.status}`}>
             <div><strong>{room?.name ?? "Previous classroom"}</strong><small>{assignment.status === "active" ? staff.status === "active" && eligibleAssignments.includes(assignment) ? "Assigned" : "Recorded active · no current access" : assignment.status === "inactive" ? "Removed" : "Archived"} · From {assignment.starts_on}{assignment.ends_on ? ` to ${assignment.ends_on}` : ""}</small></div>
             <AssignmentStatusAction assignment={assignment} classroom={room} teacherActive={staff.status === "active"} />
           </div>;

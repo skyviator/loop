@@ -106,12 +106,12 @@ test("More exposes every omitted School Admin destination with correct mobile ac
   expect([...reachableHrefs].sort()).toEqual([
     "/messages",
     "/school",
-    "/school#classrooms",
-    "/school#features",
-    "/school#people",
-    "/school#settings",
-    "/school#timetable",
+    "/school/classrooms",
+    "/school/features",
     "/school/more",
+    "/school/people",
+    "/school/settings",
+    "/school/timetable",
     "/settings",
     "/updates",
   ]);
@@ -137,4 +137,64 @@ test("desktop retains the original School Admin navigation", async ({ page }) =>
   await expect(visibleItems).toHaveText(desktopDestinations);
   await expect(nav.getByRole("link", { name: "More", exact: true })).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+});
+
+test("focused admin routes, history navigation, and iPad layouts stay in sync", async ({ page }) => {
+  test.setTimeout(60_000);
+  const consoleIssues: string[] = [];
+  page.on("console", (message) => {
+    if (["error", "warning"].includes(message.type())) consoleIssues.push(message.text());
+  });
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await signIn(page);
+  const nav = page.getByRole("navigation", { name: "Primary" });
+
+  await nav.getByRole("link", { name: "People", exact: true }).click();
+  await expect(page).toHaveURL(/\/school\/people$/);
+  await expect(page.getByRole("heading", { level: 1, name: "People" })).toBeVisible();
+  await expect(page.locator("#people")).toBeVisible();
+  await expect(page.locator("#classrooms")).toHaveCount(0);
+  await expect(nav.getByRole("link", { name: "People", exact: true })).toHaveAttribute("aria-current", "page");
+
+  await nav.getByRole("link", { name: "Timetable", exact: true }).click();
+  await expect(page).toHaveURL(/\/school\/timetable$/);
+  await expect(page.getByRole("heading", { level: 2, name: "Weekly activities" })).toBeVisible();
+  await expect(page.locator("#people")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Staff invitations" })).toHaveCount(0);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/school\/people$/);
+  await expect(nav.getByRole("link", { name: "People", exact: true })).toHaveAttribute("aria-current", "page");
+  await page.goForward();
+  await expect(page).toHaveURL(/\/school\/timetable$/);
+  await expect(nav.getByRole("link", { name: "Timetable", exact: true })).toHaveAttribute("aria-current", "page");
+
+  for (const viewport of [{ width: 768, height: 1024 }, { width: 1024, height: 768 }]) {
+    await page.setViewportSize(viewport);
+    for (const route of ["/school/people", "/school/classrooms", "/school/timetable", "/messages"]) {
+      await page.goto(route);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), `${route} at ${viewport.width}x${viewport.height}`).toBeLessThanOrEqual(0);
+      if (viewport.width === 768) await page.screenshot({ path: resolve(process.env.TEMP ?? "/tmp", `loop-ipad-${route.replaceAll("/", "-").slice(1)}.png`), fullPage: false });
+    }
+    await page.screenshot({ path: resolve(process.env.TEMP ?? "/tmp", `loop-school-admin-ipad-${viewport.width}x${viewport.height}.png`), fullPage: false });
+  }
+  expect(consoleIssues.filter((message) => !message.includes("Live updates are unavailable") && !message.includes("caret-color:\"transparent\""))).toEqual([]);
+});
+
+test("School Admin app and notification settings use accurate save feedback", async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await signIn(page);
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { level: 1, name: "My settings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add Loop to your Home Screen" })).toBeVisible();
+  const save = page.locator(".preference-save-row button");
+  await page.route("**/settings", async (route) => {
+    if (route.request().method() === "POST") await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));
+    await route.continue();
+  });
+  const saveClick = save.click();
+  await expect(save).toBeDisabled();
+  await saveClick;
+  await expect(page.getByRole("status").filter({ hasText: "Preferences saved" })).toBeVisible();
+  await expect(save).toBeEnabled();
 });

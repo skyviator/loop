@@ -72,12 +72,24 @@ describe("authenticated primary navigation", () => {
       "School",
       "My settings",
     ]);
+    expect(schoolAdminNavigation.filter((item) => !item.mobileOnly).map((item) => item.href)).toEqual([
+      "/school",
+      "/school/people",
+      "/school/classrooms",
+      "/school/timetable",
+      "/school/features",
+      "/messages",
+      "/updates",
+      "/school/settings",
+      "/settings",
+    ]);
+    expect(communicationNavigation("school_admin")).toBe(schoolAdminNavigation);
   });
 
   it("marks More active for School Admin destinations moved out of the mobile footer", () => {
     const more = schoolAdminNavigation.find((item) => item.mobileMore)!;
 
-    expect(isMobileNavigationItemActive(more, schoolAdminNavigation, "/school", "#classrooms")).toBe(true);
+    expect(isMobileNavigationItemActive(more, schoolAdminNavigation, "/school/classrooms", "")).toBe(true);
     expect(isMobileNavigationItemActive(more, schoolAdminNavigation, "/settings", "")).toBe(true);
     expect(isMobileNavigationItemActive(more, schoolAdminNavigation, "/messages", "")).toBe(false);
   });

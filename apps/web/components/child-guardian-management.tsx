@@ -137,6 +137,7 @@ function ChildProfile({ child, currentEnrollment, activeClassrooms, classroomByI
   childLimitReached: boolean;
 }) {
   const currentClassroom = currentEnrollment ? classroomById.get(currentEnrollment.classroom_id) : undefined;
+  const [editingName, setEditingName] = useState(false);
   const [mediaState, setMediaState] = useState(consent?.state ?? "not_recorded");
   const linkedMemberships = new Set(guardianLinks.map((link) => link.guardian_membership_id));
   const availableGuardians = [...guardianById.values()].filter((guardian) => guardian.status === "active" && !linkedMemberships.has(guardian.id));
@@ -148,13 +149,13 @@ function ChildProfile({ child, currentEnrollment, activeClassrooms, classroomByI
     </div>
 
     <section className="child-profile-section" aria-labelledby={`profile-${child.id}`}>
-      <h4 id={`profile-${child.id}`}>Profile and status</h4>
-      <form action={updateChildAction} className="form-stack child-compact-form">
-        <input type="hidden" name="child_id" value={child.id} />
-        <input type="hidden" name="status" value={child.status} />
-        <label className="field"><span>Preferred name</span><input name="preferred_name" defaultValue={child.preferred_name} required maxLength={80} /></label>
-        <SubmitButton>Save name</SubmitButton>
-      </form>
+      <div className="child-section-heading"><h4 id={`profile-${child.id}`}>Profile and status</h4>{!editingName ? <button type="button" className="text-button" onClick={() => setEditingName(true)}>Edit</button> : null}</div>
+      {editingName ? <form action={async (formData) => { await updateChildAction(formData); setEditingName(false); }} className="form-stack child-compact-form">
+          <input type="hidden" name="child_id" value={child.id} />
+          <input type="hidden" name="status" value={child.status} />
+          <label className="field"><span>Preferred name</span><input name="preferred_name" defaultValue={child.preferred_name} required maxLength={80} /></label>
+          <div className="inline-actions"><SubmitButton>Save name</SubmitButton><button type="button" className="button button-secondary" onClick={() => setEditingName(false)}>Cancel</button></div>
+        </form> : <dl className="child-profile-facts"><div><dt>Preferred name</dt><dd>{child.preferred_name}</dd></div><div><dt>Status</dt><dd>{statusLabel(child.status)}</dd></div></dl>}
       <ChildStatusAction child={child} canReactivate={!childLimitReached} />
     </section>
 
@@ -244,6 +245,7 @@ export function ChildGuardianManagement({ roster, enrollments, classrooms, branc
   const searchId = useId();
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(roster[0]?.id ?? "");
+  const [creatingChild, setCreatingChild] = useState(false);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredChildren = normalizedQuery ? roster.filter((child) => child.preferred_name.toLocaleLowerCase().includes(normalizedQuery)) : roster;
   const selectedChild = normalizedQuery
@@ -284,14 +286,15 @@ export function ChildGuardianManagement({ roster, enrollments, classrooms, branc
           })}
           {!filteredChildren.length ? <p className="child-empty-state">No children match “{query.trim()}”.</p> : null}
         </div>
-        <details className="compact-editor child-create" open={!roster.length}><summary>Add and enrol child</summary>
-          {childLimitReached ? <p className="status-note status-warning">No active-child places remain on this plan.</p> : relationships.activeClassrooms.length ? <form action={createChildAction} className="form-stack">
+        {!creatingChild ? <button type="button" className="button button-primary child-create-trigger" onClick={() => setCreatingChild(true)}>Add child</button> : <div className="compact-editor child-create">
+          <div className="child-create-heading"><strong>Add and enrol child</strong><button type="button" className="text-button" onClick={() => setCreatingChild(false)}>Cancel</button></div>
+          {childLimitReached ? <p className="status-note status-warning">No active-child places remain on this plan.</p> : relationships.activeClassrooms.length ? <form action={async (formData) => { await createChildAction(formData); setCreatingChild(false); }} className="form-stack">
             <label className="field"><span>Preferred name</span><input name="preferred_name" required maxLength={80} /></label>
             <label className="field"><span>Initial classroom</span><select name="classroom_id">{relationships.activeClassrooms.map((classroom) => <option key={classroom.id} value={classroom.id}>{classroom.name}</option>)}</select></label>
             <p className="child-action-note">The child and current enrollment are created together. If either fails, neither is kept.</p>
             <SubmitButton tone="primary">Add child</SubmitButton>
           </form> : <p className="child-action-note">Create or reactivate a branch and classroom before adding a child.</p>}
-        </details>
+        </div>}
       </div>
 
       {selectedChild ? <ChildProfile

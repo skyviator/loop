@@ -38,6 +38,7 @@ async function signIn(page: Page, role = "school_admin") {
   await page.getByLabel("Password").fill(account(role).password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL(role === "school_admin" ? /\/school/ : /\/teacher/);
+  if (role === "school_admin") await page.goto("/school/people");
 }
 
 async function schoolAndTeacher() {
@@ -149,7 +150,9 @@ test("staff invitation conflicts are database-race-safe and tenant scoped", asyn
 test("Teacher assignments and membership changes preserve explicit revocation", async ({ page }) => {
   test.setTimeout(120_000);
   const { schoolId, teacherId } = await schoolAndTeacher();
-  const main = await admin.from("classroom_staff_assignments").select("id, classroom_id").eq("school_id", schoolId).eq("membership_id", teacherId).eq("status", "active").single();
+  const mainClassroom = await admin.from("classrooms").select("id").eq("school_id", schoolId).eq("name", "Sunbirds").single();
+  if (mainClassroom.error) throw mainClassroom.error;
+  const main = await admin.from("classroom_staff_assignments").select("id, classroom_id").eq("school_id", schoolId).eq("membership_id", teacherId).eq("classroom_id", mainClassroom.data.id).eq("status", "active").single();
   if (main.error) throw main.error;
   const branch = await admin.from("branches").select("id").eq("school_id", schoolId).eq("status", "active").single();
   if (branch.error) throw branch.error;
@@ -169,8 +172,8 @@ test("Teacher assignments and membership changes preserve explicit revocation", 
     expect(assigned.data.status).toBe("active");
     await page.reload();
     await row.locator("summary").click();
-    await expect(row.locator(".staff-assignment-row")).toHaveCount(2);
     const qaAssignment = row.locator(".staff-assignment-row").filter({ hasText: roomName });
+    await expect(qaAssignment).toHaveCount(1);
     await qaAssignment.getByRole("button", { name: "Remove access" }).click();
     await qaAssignment.getByRole("button", { name: "Confirm removal" }).click();
     await expect(qaAssignment).toContainText("Removed");

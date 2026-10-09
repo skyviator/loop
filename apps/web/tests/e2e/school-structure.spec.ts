@@ -41,6 +41,7 @@ async function signIn(page: Page, current: Account) {
   await page.getByLabel("Password").fill(current.password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL(/\/school/);
+  await page.goto("/school/classrooms");
   await expect(page.locator("#classrooms")).toBeVisible();
 }
 
@@ -132,6 +133,7 @@ test("School Admin manages branch and classroom lifecycle with confirmation", as
     await branch.getByRole("button", { name: "Reactivate branch" }).click();
     await expect(structureItem(page, "branch", updatedBranchName).getByText("Active", { exact: true })).toBeVisible();
 
+    await page.goto("/school");
     await expect(page.getByText("branches.update", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("classrooms.update", { exact: true }).first()).toBeVisible();
   } finally {
@@ -184,7 +186,7 @@ test("School structure controls fit required mobile and desktop viewports", asyn
     { width: 1440, height: 900 },
   ]) {
     await page.setViewportSize(viewport);
-    await page.goto("/school#classrooms");
+    await page.goto("/school/classrooms");
     await expect(page.locator("#classrooms")).toBeVisible();
     await expectNoHorizontalOverflow(page);
     const shortControls = await page.locator("#classrooms button:visible, #classrooms summary:visible").evaluateAll((controls) => controls.filter((control) => control.getBoundingClientRect().height < 47).map((control) => ({ text: control.textContent?.trim(), height: control.getBoundingClientRect().height })));

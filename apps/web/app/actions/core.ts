@@ -119,7 +119,7 @@ export async function createChildAction(formData: FormData) {
     enrollment_start: localDate(viewer.timezone),
   });
   if (error) throw new Error(error.message);
-  revalidatePath("/school");
+  revalidatePath("/school", "layout");
 }
 
 export async function assignStaffAction(formData: FormData) {
@@ -212,7 +212,7 @@ export async function createInvitationAction(formData: FormData) {
     isPrimary: role === "guardian" && formBoolean(formData.get("is_primary")),
   });
 
-  const returnTo = viewer.role === "super_admin" ? "/platform" : "/school";
+  const returnTo = viewer.role === "super_admin" ? "/platform" : "/school/people";
   redirect(`${returnTo}?invite=${encodeURIComponent(message)}`);
 }
 
@@ -227,9 +227,9 @@ export async function createStaffInvitationAction(formData: FormData) {
     const failure = error instanceof Error && error.message === "A pending invitation already exists for this email."
       ? "A pending staff invitation already exists for this email. Revoke or reissue it instead."
       : "The staff invitation could not be created.";
-    redirect(`/school?staffError=${encodeURIComponent(failure)}#staff-invitations`);
+    redirect(`/school/people?staffError=${encodeURIComponent(failure)}#staff-invitations`);
   }
-  redirect(`/school?invite=${encodeURIComponent(message)}#staff-invitations`);
+  redirect(`/school/people?invite=${encodeURIComponent(message)}#staff-invitations`);
 }
 
 export async function reissueInvitationAction(formData: FormData) {
@@ -246,7 +246,7 @@ export async function reissueInvitationAction(formData: FormData) {
     target_invitation_id: invitationId,
   });
   const replacement = data?.[0];
-  const returnTo = viewer.role === "super_admin" ? "/platform" : "/school";
+  const returnTo = viewer.role === "super_admin" ? "/platform" : "/school/people";
   if (error || !replacement) {
     redirect(`${returnTo}?inviteError=${encodeURIComponent("Wait at least one minute after the last attempt before reissuing this invitation.")}`);
   }
@@ -263,7 +263,7 @@ export async function reissueInvitationAction(formData: FormData) {
     : delivery.status === "accepted"
       ? "Replacement invitation email accepted for delivery. The old link is no longer valid."
       : "Replacement invitation saved, but email delivery failed. The old link is no longer valid.";
-  const base = viewer.role === "super_admin" ? "/platform" : "/school";
+  const base = viewer.role === "super_admin" ? "/platform" : "/school/people";
   redirect(`${base}?invite=${encodeURIComponent(message)}`);
 }
 
@@ -388,7 +388,7 @@ export async function updateMembershipAction(formData: FormData) {
     const message = error.message.includes("at least one active School Admin")
       ? "This is the final active School Admin. Add or reactivate another School Admin before deactivating this membership."
       : "The staff membership could not be changed. Check that the school and your access are active.";
-    redirect(`/school?membershipError=${encodeURIComponent(message)}#staff`);
+    redirect(`/school/people?membershipError=${encodeURIComponent(message)}#staff`);
   }
   revalidatePath("/school");
 }

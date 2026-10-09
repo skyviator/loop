@@ -43,6 +43,7 @@ async function signIn(page: Page, current: Account) {
   await page.getByLabel("Password").fill(current.password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL(/\/school/);
+  await page.goto("/school/people");
   await expect(page.locator("#people")).toBeVisible();
 }
 
@@ -74,8 +75,8 @@ test("School Admin creates, searches, moves, deactivates, and reactivates a chil
     destinationId = createdDestination.data.id;
     await page.reload();
 
+    await page.getByRole("button", { name: "Add child", exact: true }).click();
     const create = page.locator(".child-create");
-    await create.locator("summary").click();
     await create.getByLabel("Preferred name").fill(name);
     await create.getByLabel("Initial classroom").selectOption({ label: "Sunbirds" });
     await create.getByRole("button", { name: "Add child" }).click();
@@ -247,7 +248,7 @@ test("child roster and management controls fit mobile and desktop without overfl
     { width: 1440, height: 900 },
   ]) {
     await page.setViewportSize(viewport);
-    await page.goto("/school#people");
+    await page.goto("/school/people");
     await expect(page.locator("#people")).toBeVisible();
     const overflow = await page.evaluate(() => ({
       document: document.documentElement.scrollWidth - document.documentElement.clientWidth,
