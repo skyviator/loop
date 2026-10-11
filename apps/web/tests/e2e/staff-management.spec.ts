@@ -226,7 +226,7 @@ test("final School Admin refusal is human-readable and mobile staff controls do 
   await expect(page.getByText("This is the final active School Admin.")).toBeVisible();
   await expect(adminRow.locator("summary")).toContainText("Active");
 
-  for (const size of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 430, height: 932 }, { width: 1440, height: 900 }]) {
+  for (const size of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 430, height: 932 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }]) {
     await page.setViewportSize(size);
     const teacherRow = page.locator(".staff-row").filter({ hasText: "Sajini Fernando" });
     await teacherRow.locator("summary").click();
@@ -247,6 +247,9 @@ test("final School Admin refusal is human-readable and mobile staff controls do 
       }).slice(0, 12),
     }));
     expect(overflow.document, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.viewport);
+    const peopleSections = await page.locator(".people-staff-grid, #staff, #staff-invitations").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().width)));
+    expect(peopleSections[1], JSON.stringify(peopleSections)).toBe(peopleSections[2]);
+    expect(peopleSections[1], JSON.stringify(peopleSections)).toBeGreaterThanOrEqual(peopleSections[0]);
     const targets = await page.locator("#staff button, #staff-invitations button, #staff summary").evaluateAll((items) => items.filter((item) => {
       const element = item as HTMLElement;
       return getComputedStyle(element).display !== "none" && element.getBoundingClientRect().width > 0;

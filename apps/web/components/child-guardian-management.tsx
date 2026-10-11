@@ -34,6 +34,10 @@ function statusLabel(status: RecordStatus) {
   return status === "active" ? "Active" : status === "archived" ? "Archived" : "Inactive";
 }
 
+function consentLabel(state: Consent["state"]) {
+  return state === "granted" ? "Granted" : state === "denied" ? "Denied" : "Not recorded";
+}
+
 function ChildStatusAction({ child, canReactivate }: { child: Child; canReactivate: boolean }) {
   const [confirming, setConfirming] = useState(false);
 
@@ -139,6 +143,8 @@ function ChildProfile({ child, currentEnrollment, activeClassrooms, classroomByI
   const currentClassroom = currentEnrollment ? classroomById.get(currentEnrollment.classroom_id) : undefined;
   const [editingName, setEditingName] = useState(false);
   const [mediaState, setMediaState] = useState(consent?.state ?? "not_recorded");
+  const [editingConsent, setEditingConsent] = useState(!consent);
+  const [consentFeedback, setConsentFeedback] = useState<"saved" | "error" | null>(null);
   const linkedMemberships = new Set(guardianLinks.map((link) => link.guardian_membership_id));
   const availableGuardians = [...guardianById.values()].filter((guardian) => guardian.status === "active" && !linkedMemberships.has(guardian.id));
 
@@ -218,14 +224,28 @@ function ChildProfile({ child, currentEnrollment, activeClassrooms, classroomByI
     </section>
 
     <section className="child-profile-section" aria-labelledby={`consent-${child.id}`}>
-      <h4 id={`consent-${child.id}`}>Media consent</h4>
+      <div className="child-section-heading"><h4 id={`consent-${child.id}`}>Media consent</h4>{consent && !editingConsent ? <button type="button" className="text-button" onClick={() => { setConsentFeedback(null); setEditingConsent(true); }}>Change</button> : null}</div>
       <p className="child-action-note">Not recorded and denied prevent new photo tags. Changing granted consent to either option also withdraws existing tagged photos immediately and schedules their private files for deletion.</p>
-      <form action={setMediaConsentAction} className="consent-row child-profile-consent">
-        <input type="hidden" name="child_id" value={child.id} />
-        <span><strong>Photo use</strong><small>Last changed {consent ? new Date(consent.changed_at).toLocaleDateString("en-LK") : "never"}</small></span>
-        <select aria-label={`Media consent for ${child.preferred_name}`} name="state" value={mediaState} onChange={(event) => setMediaState(event.target.value as Consent["state"])}><option value="not_recorded">Not recorded</option><option value="granted">Granted</option><option value="denied">Denied</option></select>
-        <SubmitButton>Save consent</SubmitButton>
-      </form>
+      {editingConsent ? <form action={async (formData) => {
+        setConsentFeedback(null);
+        try {
+          await setMediaConsentAction(formData);
+          setEditingConsent(false);
+          setConsentFeedback("saved");
+        } catch {
+          setConsentFeedback("error");
+        }
+      }} className="consent-row child-profile-consent">
+          <input type="hidden" name="child_id" value={child.id} />
+          <span><strong>Photo use</strong><small>Last changed {consent ? new Date(consent.changed_at).toLocaleDateString("en-LK") : "never"}</small></span>
+          <select aria-label={`Media consent for ${child.preferred_name}`} name="state" value={mediaState} onChange={(event) => setMediaState(event.target.value as Consent["state"])}><option value="not_recorded">Not recorded</option><option value="granted">Granted</option><option value="denied">Denied</option></select>
+          <div className="inline-actions"><SubmitButton>Save consent</SubmitButton>{consent ? <button type="button" className="button button-secondary" onClick={() => { setMediaState(consent.state); setConsentFeedback(null); setEditingConsent(false); }}>Cancel</button> : null}</div>
+          {consentFeedback === "error" ? <p className="consent-feedback consent-feedback-error" role="alert">Consent could not be saved. Try again.</p> : null}
+        </form> : <div className="child-profile-consent-view">
+          <span><strong>Photo use</strong><small>Last changed {consent ? new Date(consent.changed_at).toLocaleDateString("en-LK") : "never"}</small></span>
+          <strong>{consentLabel(mediaState)}</strong>
+        </div>}
+      {consentFeedback === "saved" ? <p className="consent-feedback consent-feedback-success" role="status">Consent updated.</p> : null}
     </section>
   </div>;
 }
@@ -298,7 +318,7 @@ export function ChildGuardianManagement({ roster, enrollments, classrooms, branc
       </div>
 
       {selectedChild ? <ChildProfile
-        key={`${selectedChild.id}:${relationships.consentByChild.get(selectedChild.id)?.state ?? "not_recorded"}`}
+        key={selectedChild.id}
         child={selectedChild}
         currentEnrollment={relationships.currentEnrollmentByChild.get(selectedChild.id)}
         activeClassrooms={relationships.activeClassrooms}

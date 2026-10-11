@@ -221,16 +221,28 @@ test("child media consent changes among all conservative states", async ({ page 
   if (child.error) throw child.error;
   const original = await admin.from("child_media_consents").select("state").eq("child_id", child.data.id).single();
   if (original.error) throw original.error;
+  const consentSection = page.locator(".child-profile-section").filter({ hasText: "Media consent" });
 
   try {
+    await expect(consentSection.locator(".child-profile-consent-view")).toBeVisible();
+    await consentSection.getByRole("button", { name: "Change" }).click();
+    await consentSection.getByLabel(`Media consent for Amaya Herath`).selectOption(original.data.state === "granted" ? "denied" : "granted");
+    await consentSection.getByRole("button", { name: "Cancel" }).click();
+    await expect(consentSection.locator("select")).toHaveCount(0);
+    await expect(consentSection.locator(".child-profile-consent-view")).toContainText(original.data.state === "not_recorded" ? "Not recorded" : original.data.state === "granted" ? "Granted" : "Denied");
+
     for (const state of ["not_recorded", "granted", "denied"] as const) {
+      await consentSection.getByRole("button", { name: "Change" }).click();
       await page.locator(".child-profile-consent select").selectOption(state);
       await page.locator(".child-profile-consent").getByRole("button", { name: "Save consent" }).click();
       await expect.poll(async () => (await admin.from("child_media_consents").select("state").eq("child_id", child.data.id).single()).data?.state).toBe(state);
-      await expect(page.locator(".child-profile-consent select")).toHaveValue(state);
+      await expect(page.locator(".child-profile-consent select")).toHaveCount(0);
+      await expect(consentSection.getByRole("status")).toHaveText("Consent updated.");
+      await expect(page.locator(".child-profile-consent-view")).toContainText(state === "not_recorded" ? "Not recorded" : state === "granted" ? "Granted" : "Denied");
       await page.reload();
       await selectChild(page, "Amaya Herath");
-      await expect(page.locator(".child-profile-consent select")).toHaveValue(state);
+      await expect(page.locator(".child-profile-consent select")).toHaveCount(0);
+      await expect(page.locator(".child-profile-consent-view")).toContainText(state === "not_recorded" ? "Not recorded" : state === "granted" ? "Granted" : "Denied");
     }
     const audit = await admin.from("audit_log").select("action").eq("entity_id", child.data.id).eq("entity_table", "child_media_consents");
     expect(audit.data?.filter((event) => event.action === "child_media_consents.update").length).toBeGreaterThanOrEqual(3);
